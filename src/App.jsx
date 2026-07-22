@@ -140,6 +140,12 @@ const recentLogins = [
   { name: "Md. Ashikur Rahman", time: "12:09 PM" },
 ];
 
+const latestNews = [
+  { title: "Eid holiday notice published for all units", time: "2 days ago" },
+  { title: "New attendance device installed at Rotor unit", time: "5 days ago" },
+  { title: "Q3 bonus disbursement schedule confirmed", time: "1 week ago" },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Storage helpers                                                    */
 /* ------------------------------------------------------------------ */
@@ -529,6 +535,72 @@ function Dashboard({ employees }) {
             ))}
           </Panel>
         </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 260, maxWidth: 340 }}>
+          <Panel title="Calendar">
+            <MiniCalendar />
+          </Panel>
+        </div>
+        <div style={{ flex: 2, minWidth: 300 }}>
+          <Panel title="Latest News">
+            {latestNews.map((n, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 0", borderBottom: i < latestNews.length - 1 ? `1px solid ${T.line}` : "none" }}>
+                <span style={{ width: 30, height: 30, borderRadius: 8, background: `${T.amber}1A`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Bell size={14} color={T.amberDeep} />
+                </span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>{n.title}</div>
+                  <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 2 }}>{n.time}</div>
+                </div>
+              </div>
+            ))}
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniCalendar() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const monthName = today.toLocaleString("en-US", { month: "long" });
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <div>
+      <div style={{ textAlign: "center", fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 13.5, color: T.ink, marginBottom: 12 }}>
+        {monthName} {year}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+          <div key={d} style={{ textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.inkSoft }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        {cells.map((d, i) => {
+          const isToday = d === today.getDate();
+          return (
+            <div
+              key={i}
+              style={{
+                textAlign: "center", fontSize: 12, padding: "6px 0", borderRadius: 6,
+                color: isToday ? "#fff" : d ? T.ink : "transparent",
+                background: isToday ? T.amber : "transparent",
+                fontWeight: isToday ? 700 : 500,
+              }}
+            >
+              {d || "·"}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
