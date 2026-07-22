@@ -9,6 +9,7 @@ import {
   Factory, UserCog, FileSpreadsheet, ChevronsRight, Wallet, Printer, RefreshCcw,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import companyLogo from "./assets/company-logo.png";
 
 /* ------------------------------------------------------------------ */
 /*  DESIGN PLAN                                                        */
@@ -61,6 +62,10 @@ function GoogleFonts() {
 /*  Seed data                                                          */
 /* ------------------------------------------------------------------ */
 const COMPANIES = [
+  {
+    key: "nippon", name: "Nippon Paint (Bangladesh) Private Limited", short: "Nippon Paint",
+    address: "Unit No: 501,503, (Sel Rose N Dale Apartment), Holding No:116, Village/Area: Kazi Nazrul Islam Avenue, Post office: Ramna, Post code: 1000, Upazila/Police Station: Ramna, District: Dhaka, Division: Dhaka, Country: BANGLADESH",
+  },
   { key: "atsm", name: "Adrika Textile & Spinning Mills Ltd.", short: "ATSM" },
   { key: "rotor", name: "Rotor Spinning Ltd (Pvt.)", short: "Rotor" },
   { key: "ho", name: "Adrika Group (Head Office)", short: "H/O" },
@@ -112,9 +117,18 @@ const seedGazettes = [
   { id: 1, effect: "2026-01", basicPct: 50, hrPct: 30, convValue: 0, convPct: 10, convFixed: false, medValue: 0, medPct: 10, medFixed: false },
 ];
 
+const seedEmployeeGroups = [
+  { id: 1, name: "General A", createdAt: "Aug 07, 2025 08:02:34 PM", updatedAt: "Aug 07, 2025 08:02:34 PM" },
+  { id: 2, name: "General B", createdAt: "Aug 07, 2025 08:02:55 PM", updatedAt: "Aug 07, 2025 08:02:55 PM" },
+  { id: 3, name: "Reliever", createdAt: "Aug 07, 2025 08:03:18 PM", updatedAt: "Aug 07, 2025 08:03:18 PM" },
+  { id: 4, name: "P/A", createdAt: "Aug 07, 2025 08:03:34 PM", updatedAt: "Aug 07, 2025 08:03:34 PM" },
+];
+
+const seedProbationPeriods = [];
+
 const ROLE_PERMS = {
-  Admin: ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Gazette", "Salary", "User Access"],
-  "HR Manager": ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Salary"],
+  Admin: ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Gazette", "Salary", "User Access", "Employee Group", "Probation Period"],
+  "HR Manager": ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Salary", "Employee Group", "Probation Period"],
   Viewer: ["Dashboard", "Employees"],
 };
 
@@ -159,6 +173,8 @@ const STORE_KEYS = {
   users: "hrm2:users",
   session: "hrm2:session",
   salarySheets: "hrm2:salarySheets",
+  employeeGroups: "hrm2:employeeGroups",
+  probationPeriods: "hrm2:probationPeriods",
 };
 
 async function storageGet(key) {
@@ -323,11 +339,9 @@ function Login({ users, onLogin }) {
       <GoogleFonts />
       <form onSubmit={submit} style={{ background: T.card, width: 370, padding: "36px 34px", borderRadius: 14, boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
         <div style={{ textAlign: "center", marginBottom: 26 }}>
-          <div style={{ width: 46, height: 46, background: T.amber, borderRadius: 12, margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Factory size={24} color={T.navy} />
-          </div>
-          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 800, color: T.ink }}>Milltrack HRM</div>
-          <div style={{ fontSize: 11, letterSpacing: 1.5, color: T.inkSoft, textTransform: "uppercase", marginTop: 3 }}>Workforce & Payroll Register</div>
+          <img src={companyLogo} alt="Nippon Paint" style={{ width: 64, height: "auto", margin: "0 auto 12px", display: "block" }} />
+          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 800, color: T.ink, lineHeight: 1.3 }}>Nippon Paint (Bangladesh)<br />Private Limited</div>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, color: T.inkSoft, textTransform: "uppercase", marginTop: 6 }}>Workforce & Payroll Register</div>
         </div>
         <Field label="Username" required>
           <TInput value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" autoFocus />
@@ -360,6 +374,8 @@ const NAV = [
     children: [
       { key: "departments", label: "Department", icon: Building2, perm: "Departments" },
       { key: "holidays", label: "Holiday Calendar", icon: CalendarDays, perm: "Holidays" },
+      { key: "probation", label: "Probation Period", icon: UserCog, perm: "Probation Period" },
+      { key: "group", label: "Employee Group", icon: Layers, perm: "Employee Group" },
       { key: "shifts", label: "Shifts", icon: Clock, perm: "Shifts" },
       { key: "bonus", label: "Bonus Type", icon: Award, perm: "Bonus" },
       { key: "gazette", label: "Gazette Calculation", icon: Calculator, perm: "Gazette" },
@@ -373,11 +389,9 @@ function Sidebar({ view, setView, allowed }) {
   return (
     <div style={{ width: 232, background: T.navy, color: "#fff", flexShrink: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 34, height: 34, background: T.amber, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Factory size={18} color={T.navy} />
-        </div>
+        <img src={companyLogo} alt="Nippon Paint" style={{ width: 34, height: "auto", flexShrink: 0 }} />
         <div>
-          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 700 }}>Milltrack</div>
+          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 14, fontWeight: 700, lineHeight: 1.25 }}>Nippon Paint</div>
           <div style={{ fontSize: 9.5, letterSpacing: 1.5, color: "rgba(255,255,255,0.55)", textTransform: "uppercase" }}>HRM Suite</div>
         </div>
       </div>
@@ -622,7 +636,7 @@ function companyName(key) {
   return COMPANIES.find((c) => c.key === key)?.name || key;
 }
 
-function EmployeeList({ employees, departments, onAdd, onDelete, canEdit }) {
+function EmployeeList({ employees, departments, groups, onAdd, onDelete, canEdit }) {
   const [q, setQ] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -634,7 +648,7 @@ function EmployeeList({ employees, departments, onAdd, onDelete, canEdit }) {
     (!companyFilter || e.company === companyFilter)
   );
 
-  if (adding) return <AddEmployeeWizard departments={departments} onCancel={() => setAdding(false)} onSave={(emp) => { onAdd(emp); setAdding(false); }} />;
+  if (adding) return <AddEmployeeWizard departments={departments} groups={groups} onCancel={() => setAdding(false)} onSave={(emp) => { onAdd(emp); setAdding(false); }} />;
 
   return (
     <div style={{ padding: 24 }}>
@@ -701,21 +715,38 @@ function StepDot({ n, active, done, label }) {
   );
 }
 
-function AddEmployeeWizard({ departments, onCancel, onSave }) {
+function AddEmployeeWizard({ departments, groups, onCancel, onSave }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     joining: "", company: COMPANIES[0].key, department: departments[0]?.name || "", designation: "",
-    name: "", phone: "", email: "", nationalId: "", gender: "", maritalStatus: "",
-    exam: "", institute: "", passYear: "",
+    empId: "", name: "", hierarchy: "", phone: "", permAddress: "", permPhone: "",
+    email: "", nationality: "Bangladesh", nationalId: "",
+    fatherHusband: "", motherName: "", dob: "", gender: "", maritalStatus: "",
+    religion: "", section: "", group: groups?.[0]?.name || "",
+    employeeType: "", fingerPrintId: "", spouseName: "", mfsType: "", mfsNumber: "",
+    facilities: "No Facilities", employmentStatus: "Permanent", cardNo: "", overtime: "Yes",
     height: "", weight: "", bloodGroup: "", emergencyName: "", relation: "", emergencyPhone: "",
   });
+  const [education, setEducation] = useState([{ id: 1, exam: "", cgpa: "", year: "", institute: "" }]);
+  const [experience, setExperience] = useState([{ id: 1, company: "", designation: "", duration: "" }]);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const steps = ["Basic Information", "Education & Experience", "Personal & Official"];
+  const steps = ["Basic Information", "Educational Qualification & Experience", "Personal & Official Information"];
+
+  const addEduRow = () => setEducation([...education, { id: Date.now(), exam: "", cgpa: "", year: "", institute: "" }]);
+  const removeEduRow = (id) => setEducation(education.filter((r) => r.id !== id));
+  const setEduField = (id, k) => (e) => setEducation(education.map((r) => (r.id === id ? { ...r, [k]: e.target.value } : r)));
+
+  const addExpRow = () => setExperience([...experience, { id: Date.now(), company: "", designation: "", duration: "" }]);
+  const removeExpRow = (id) => setExperience(experience.filter((r) => r.id !== id));
+  const setExpField = (id, k) => (e) => setExperience(experience.map((r) => (r.id === id ? { ...r, [k]: e.target.value } : r)));
 
   const save = () => {
-    const id = String(Date.now()).slice(-8);
+    const id = form.empId.trim() || String(Date.now()).slice(-8);
     onSave({ id, name: form.name || "Unnamed", joining: form.joining || "—", company: form.company, department: form.department, designation: form.designation || "—", status: "Activated", phone: form.phone });
   };
+
+  const miniTableHeadStyle = { padding: "8px 6px", fontSize: 10.5, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}`, textAlign: "left" };
+  const miniTableCellStyle = { padding: "6px", verticalAlign: "top" };
 
   return (
     <div style={{ padding: 24 }}>
@@ -726,47 +757,143 @@ function AddEmployeeWizard({ departments, onCancel, onSave }) {
         {step === 1 && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
             <Field label="Joining Date" required><TInput type="date" value={form.joining} onChange={set("joining")} /></Field>
-            <Field label="Present Phone Number"><TInput value={form.phone} onChange={set("phone")} placeholder="01xxxxxxxxx" /></Field>
+            <Field label="Present Phone Number"><TInput value={form.phone} onChange={set("phone")} placeholder="Present Phone Numbers" /></Field>
             <Field label="Company" required>
               <TSelect value={form.company} onChange={set("company")}>{COMPANIES.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}</TSelect>
             </Field>
-            <Field label="Email"><TInput type="email" value={form.email} onChange={set("email")} placeholder="name@mill.com" /></Field>
+            <Field label="Permanent Address"><textarea value={form.permAddress} onChange={set("permAddress")} placeholder="Present Address" rows={2} style={{ ...inputStyle, resize: "vertical" }} /></Field>
             <Field label="Department" required>
               <TSelect value={form.department} onChange={set("department")}>{departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}</TSelect>
             </Field>
-            <Field label="National ID"><TInput value={form.nationalId} onChange={set("nationalId")} /></Field>
+            <Field label="Permanent Phone Number"><TInput value={form.permPhone} onChange={set("permPhone")} placeholder="Permanent Phone Numbers" /></Field>
             <Field label="Designation" required><TInput value={form.designation} onChange={set("designation")} placeholder="e.g. Line Operator" /></Field>
-            <Field label="Employee / Worker Name" required><TInput value={form.name} onChange={set("name")} /></Field>
+            <Field label="Email"><TInput type="email" value={form.email} onChange={set("email")} placeholder="Email" /></Field>
+            <Field label="Employee Id"><TInput value={form.empId} onChange={set("empId")} placeholder="Given Id (blank = auto)" /></Field>
+            <Field label="Nationality">
+              <TSelect value={form.nationality} onChange={set("nationality")}><option>Bangladesh</option><option>India</option><option>Nepal</option><option>Other</option></TSelect>
+            </Field>
+            <Field label="Employee / Worker Name" required><TInput value={form.name} onChange={set("name")} placeholder="Employee/Worker Name" /></Field>
+            <Field label="National Id"><TInput value={form.nationalId} onChange={set("nationalId")} placeholder="National Id" /></Field>
+            <Field label="Hierarchy"><TInput value={form.hierarchy} onChange={set("hierarchy")} placeholder="Employee Hierarchy" /></Field>
+            <Field label="Father / Husband Name"><TInput value={form.fatherHusband} onChange={set("fatherHusband")} placeholder="Father/Husband Name" /></Field>
+            <Field label="Mother's Name"><TInput value={form.motherName} onChange={set("motherName")} placeholder="Mother's Name" /></Field>
+            <Field label="Date Of Birth"><TInput type="date" value={form.dob} onChange={set("dob")} /></Field>
             <Field label="Gender">
               <TSelect value={form.gender} onChange={set("gender")}><option value="">Select Gender</option><option>Male</option><option>Female</option><option>Other</option></TSelect>
+            </Field>
+            <Field label="Religion">
+              <TSelect value={form.religion} onChange={set("religion")}><option value="">Select Religion</option><option>Islam</option><option>Hinduism</option><option>Christianity</option><option>Buddhism</option><option>Other</option></TSelect>
             </Field>
             <Field label="Marital Status">
               <TSelect value={form.maritalStatus} onChange={set("maritalStatus")}><option value="">Select Status</option><option>Single</option><option>Married</option></TSelect>
             </Field>
+            <Field label="Section">
+              <TSelect value={form.section} onChange={set("section")}><option value="">Select Section</option><option>Knitting</option><option>Dyeing</option><option>Sewing</option><option>Finishing</option></TSelect>
+            </Field>
+            <Field label="Employee Group">
+              <TSelect value={form.group} onChange={set("group")}>
+                <option value="">Select Group</option>
+                {(groups || []).map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
+              </TSelect>
+            </Field>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field label="Photo — Max 50 kb">
+                <div style={{ border: `1.5px dashed ${T.line}`, borderRadius: 8, padding: "22px 14px", textAlign: "center", color: T.inkSoft, fontSize: 12.5, background: T.canvas }}>
+                  <UserPlus size={20} style={{ marginBottom: 6, opacity: 0.6 }} />
+                  <div>Drop a file here or click to choose</div>
+                </div>
+              </Field>
+            </div>
           </div>
         )}
         {step === 2 && (
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, marginBottom: 10 }}>Educational Qualification</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
-              <Field label="Examination"><TInput value={form.exam} onChange={set("exam")} /></Field>
-              <Field label="Institute / Board"><TInput value={form.institute} onChange={set("institute")} /></Field>
-              <Field label="Passing Year"><TInput value={form.passYear} onChange={set("passYear")} /></Field>
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, margin: "14px 0 10px", borderTop: `1px solid ${T.line}`, paddingTop: 14 }}>Experience</div>
-            <div style={{ fontSize: 12.5, color: T.inkSoft }}>No prior experience records added — optional for new mill hires.</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, marginBottom: 8 }}>
+              <thead><tr>
+                <th style={{ ...miniTableHeadStyle, width: 34 }}>SL</th>
+                <th style={miniTableHeadStyle}>Examination</th>
+                <th style={miniTableHeadStyle}>CGPA / Number</th>
+                <th style={miniTableHeadStyle}>Passing Year</th>
+                <th style={miniTableHeadStyle}>Institute / Board</th>
+                <th style={{ ...miniTableHeadStyle, width: 34 }}></th>
+              </tr></thead>
+              <tbody>
+                {education.map((r, i) => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                    <td style={miniTableCellStyle}>{i + 1}</td>
+                    <td style={miniTableCellStyle}><TInput value={r.exam} onChange={setEduField(r.id, "exam")} /></td>
+                    <td style={miniTableCellStyle}><TInput value={r.cgpa} onChange={setEduField(r.id, "cgpa")} /></td>
+                    <td style={miniTableCellStyle}><TInput value={r.year} onChange={setEduField(r.id, "year")} /></td>
+                    <td style={miniTableCellStyle}><TInput value={r.institute} onChange={setEduField(r.id, "institute")} /></td>
+                    <td style={miniTableCellStyle}>{education.length > 1 && <IconBtn icon={X} tone={T.red} onClick={() => removeEduRow(r.id)} />}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Btn small variant="quiet" onClick={addEduRow}><Plus size={13} /> Add New</Btn>
+
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, margin: "20px 0 10px", borderTop: `1px solid ${T.line}`, paddingTop: 16 }}>Experience</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, marginBottom: 8 }}>
+              <thead><tr>
+                <th style={{ ...miniTableHeadStyle, width: 34 }}>SL</th>
+                <th style={miniTableHeadStyle}>Company Name</th>
+                <th style={miniTableHeadStyle}>Designation</th>
+                <th style={miniTableHeadStyle}>Duration</th>
+                <th style={{ ...miniTableHeadStyle, width: 34 }}></th>
+              </tr></thead>
+              <tbody>
+                {experience.map((r, i) => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                    <td style={miniTableCellStyle}>{i + 1}</td>
+                    <td style={miniTableCellStyle}><TInput value={r.company} onChange={setExpField(r.id, "company")} /></td>
+                    <td style={miniTableCellStyle}><TInput value={r.designation} onChange={setExpField(r.id, "designation")} /></td>
+                    <td style={miniTableCellStyle}><TInput value={r.duration} onChange={setExpField(r.id, "duration")} placeholder="e.g. 2 years" /></td>
+                    <td style={miniTableCellStyle}>{experience.length > 1 && <IconBtn icon={X} tone={T.red} onClick={() => removeExpRow(r.id)} />}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Btn small variant="quiet" onClick={addExpRow}><Plus size={13} /> Add New</Btn>
           </div>
         )}
         {step === 3 && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
-            <Field label="Height"><TInput value={form.height} onChange={set("height")} placeholder="cm" /></Field>
-            <Field label="Weight"><TInput value={form.weight} onChange={set("weight")} placeholder="kg" /></Field>
+            <Field label="Employee Type" required>
+              <TSelect value={form.employeeType} onChange={set("employeeType")}>
+                <option value="">Select Employee Type</option>
+                <option>Production</option><option>Staff</option><option>Worker</option><option>Officer</option>
+              </TSelect>
+            </Field>
+            <Field label="Finger Print ID"><TInput value={form.fingerPrintId} onChange={set("fingerPrintId")} placeholder="Finger Print ID" /></Field>
+            <Field label="Spouse Name"><TInput value={form.spouseName} onChange={set("spouseName")} placeholder="Spouse Name" /></Field>
+            <Field label="MFS Type">
+              <TSelect value={form.mfsType} onChange={set("mfsType")}><option value="">Select Type</option><option>bKash</option><option>Nagad</option><option>Rocket</option></TSelect>
+            </Field>
+            <Field label="MFS Number"><TInput value={form.mfsNumber} onChange={set("mfsNumber")} placeholder="MFS" /></Field>
+            <Field label="Facilities">
+              <TSelect value={form.facilities} onChange={set("facilities")}>
+                <option>Quarter Facilities</option><option>Transport Facilities</option><option>No Facilities</option>
+              </TSelect>
+            </Field>
+            <Field label="Employment Status">
+              <TSelect value={form.employmentStatus} onChange={set("employmentStatus")}><option>Permanent</option><option>Probation</option><option>Contractual</option><option>Temporary</option></TSelect>
+            </Field>
+            <Field label="Card No"><TInput value={form.cardNo} onChange={set("cardNo")} placeholder="Card No" /></Field>
+            <Field label="Over Time">
+              <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
+                <RadioDot label="Yes" color={T.green} checked={form.overtime === "Yes"} onClick={() => setForm({ ...form, overtime: "Yes" })} />
+                <RadioDot label="No" color={T.slate} checked={form.overtime === "No"} onClick={() => setForm({ ...form, overtime: "No" })} />
+              </div>
+            </Field>
             <Field label="Blood Group">
               <TSelect value={form.bloodGroup} onChange={set("bloodGroup")}>
                 <option value="">Select Blood Group</option>
                 {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((b) => <option key={b}>{b}</option>)}
               </TSelect>
             </Field>
+            <Field label="Height"><TInput value={form.height} onChange={set("height")} placeholder="cm" /></Field>
+            <Field label="Weight"><TInput value={form.weight} onChange={set("weight")} placeholder="kg" /></Field>
             <Field label="Emergency Contact Name"><TInput value={form.emergencyName} onChange={set("emergencyName")} /></Field>
             <Field label="Relation"><TInput value={form.relation} onChange={set("relation")} placeholder="e.g. Father, Spouse" /></Field>
             <Field label="Emergency Phone"><TInput value={form.emergencyPhone} onChange={set("emergencyPhone")} /></Field>
@@ -826,22 +953,231 @@ function Departments({ departments, setDepartments }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Employee Group                                                     */
+/* ------------------------------------------------------------------ */
+function nowStamp() {
+  return new Date().toLocaleString("en-US", {
+    month: "short", day: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true,
+  });
+}
+
+function EmployeeGroups({ groups, setGroups }) {
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState(false); // false | "new" | group object being edited
+  const [name, setName] = useState("");
+
+  const openNew = () => { setForm("new"); setName(""); };
+  const openEdit = (g) => { setForm(g); setName(g.name); };
+  const closeForm = () => setForm(false);
+
+  const save = () => {
+    if (!name.trim()) return;
+    if (form === "new") {
+      setGroups([{ id: Date.now(), name: name.trim(), createdAt: nowStamp(), updatedAt: nowStamp() }, ...groups]);
+    } else {
+      setGroups(groups.map((g) => (g.id === form.id ? { ...g, name: name.trim(), updatedAt: nowStamp() } : g)));
+    }
+    setForm(false);
+  };
+  const remove = (id) => setGroups(groups.filter((g) => g.id !== id));
+  const filtered = groups.filter((g) => !q || g.name.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      {form && (
+        <Panel title={form === "new" ? "Add Group" : "Edit Group"} right={<Btn variant="quiet" small onClick={closeForm}><X size={14} /> Cancel</Btn>}>
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <Field label="Group Name" required><TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. General A" /></Field>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <Btn variant="primary" onClick={save}><Plus size={14} /> Save</Btn>
+            </div>
+          </div>
+        </Panel>
+      )}
+      <Panel title="Group" right={<Btn variant="primary" small onClick={openNew}><Plus size={14} /> Add Group</Btn>}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <div style={{ position: "relative", width: 220 }}>
+            <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
+            <TInput placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+          </div>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Id", "Name", "Created At", "Updated At", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {filtered.map((g) => (
+              <tr key={g.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{g.id}</td>
+                <td style={{ padding: "10px 6px", fontWeight: 700 }}>{g.name}</td>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{g.createdAt}</td>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{g.updatedAt}</td>
+                <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => openEdit(g)} />
+                  <IconBtn icon={Trash2} tone={T.red} title="Delete" onClick={() => remove(g.id)} />
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && <tr><td colSpan={5} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No groups found.</td></tr>}
+          </tbody>
+        </table>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <Btn small variant="quiet" disabled>Previous</Btn>
+          <Btn small variant="navy" disabled>1</Btn>
+          <Btn small variant="quiet" disabled>Next</Btn>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Probation Period                                                   */
+/* ------------------------------------------------------------------ */
+function ProbationPeriod({ periods, setPeriods }) {
+  const [form, setForm] = useState(false); // false | "new" | period object being edited
+  const [company, setCompany] = useState(COMPANIES[0].key);
+  const [months, setMonths] = useState("3");
+  const [periodName, setPeriodName] = useState("");
+
+  const openNew = () => { setForm("new"); setCompany(COMPANIES[0].key); setMonths("3"); setPeriodName(""); };
+  const openEdit = (p) => { setForm(p); setCompany(p.company); setMonths(p.months); setPeriodName(p.periodName); };
+  const closeForm = () => setForm(false);
+
+  const save = () => {
+    if (!periodName.trim()) return;
+    if (form === "new") {
+      setPeriods([{ id: Date.now(), company, months, periodName: periodName.trim(), createdAt: nowStamp(), updatedAt: nowStamp() }, ...periods]);
+    } else {
+      setPeriods(periods.map((p) => (p.id === form.id ? { ...p, company, months, periodName: periodName.trim(), updatedAt: nowStamp() } : p)));
+    }
+    setForm(false);
+  };
+  const remove = (id) => setPeriods(periods.filter((p) => p.id !== id));
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      {form && (
+        <Panel title={form === "new" ? "Add Probation Period" : "Edit Probation Period"} right={<Btn variant="quiet" small onClick={closeForm}><X size={14} /> Cancel</Btn>}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px", alignItems: "start" }}>
+            <Field label="Company" required>
+              <TSelect value={company} onChange={(e) => setCompany(e.target.value)}>{COMPANIES.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}</TSelect>
+            </Field>
+            <Field label="Period (Months)" required>
+              <TInput type="number" min="1" value={months} onChange={(e) => setMonths(e.target.value)} placeholder="e.g. 3" />
+            </Field>
+            <Field label="Period Name" required>
+              <TInput value={periodName} onChange={(e) => setPeriodName(e.target.value)} placeholder="e.g. Standard Probation" />
+            </Field>
+          </div>
+          <Btn variant="primary" onClick={save}><Plus size={14} /> Save</Btn>
+        </Panel>
+      )}
+      <Panel title="Probation Period" right={<Btn variant="primary" small onClick={openNew}><Plus size={14} /> Add Probation Period</Btn>}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, fontSize: 12.5, color: T.inkSoft }}>
+          <span>Display 10 records</span>
+          <div style={{ position: "relative", width: 200 }}>
+            <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
+            <TInput placeholder="Search" style={{ paddingLeft: 32 }} />
+          </div>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Id", "Company", "Period Month", "Period Name", "Created At", "Updated At", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {periods.map((p) => (
+              <tr key={p.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{p.id}</td>
+                <td style={{ padding: "10px 6px" }}>{companyName(p.company)}</td>
+                <td style={{ padding: "10px 6px" }}>{p.months} month(s)</td>
+                <td style={{ padding: "10px 6px", fontWeight: 700 }}>{p.periodName}</td>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{p.createdAt}</td>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{p.updatedAt}</td>
+                <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => openEdit(p)} />
+                  <IconBtn icon={Trash2} tone={T.red} title="Delete" onClick={() => remove(p.id)} />
+                </td>
+              </tr>
+            ))}
+            {periods.length === 0 && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No data available in table</td></tr>}
+          </tbody>
+        </table>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, fontSize: 12.5, color: T.inkSoft }}>
+          <span>Showing {periods.length} of {periods.length} entries</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn small variant="quiet" disabled>Previous</Btn>
+            <Btn small variant="quiet" disabled>Next</Btn>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Holiday Calendar (with month grid view)                            */
 /* ------------------------------------------------------------------ */
+function RadioDot({ checked, onClick, label, color }) {
+  return (
+    <label onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13, color: T.ink, userSelect: "none" }}>
+      <span style={{
+        width: 16, height: 16, borderRadius: "50%", border: `2px solid ${checked ? (color || T.blue) : T.line}`,
+        display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", flexShrink: 0,
+      }}>
+        {checked && <span style={{ width: 8, height: 8, borderRadius: "50%", background: color || T.blue }} />}
+      </span>
+      {label}
+    </label>
+  );
+}
+
+function TypePill({ label, checked, onClick, color }) {
+  return (
+    <button type="button" onClick={onClick} style={{
+      display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 16px", borderRadius: 20,
+      fontSize: 12.5, fontWeight: 700, border: `1.5px solid ${color}`, cursor: "pointer",
+      background: checked ? color : "#fff", color: checked ? "#fff" : color,
+    }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: checked ? "#fff" : color }} />
+      {label}
+    </button>
+  );
+}
+
+const WEEKDAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const WEEKDAY_INDEX = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+
 function HolidayCalendar({ holidays, setHolidays }) {
+  const [company, setCompany] = useState(COMPANIES[0].key);
+  const [dayType, setDayType] = useState("Single");
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [weekday, setWeekday] = useState("Friday");
   const [type, setType] = useState("Government");
+  const [status, setStatus] = useState("Active");
   const [cursor, setCursor] = useState(new Date(2026, 6, 1));
   const [view, setView] = useState("calendar");
 
   const add = () => {
-    if (!title.trim() || !date) return;
-    setHolidays([...holidays, { id: Date.now(), title, date, type, status: "Active" }]);
-    setTitle(""); setDate("");
+    if (!title.trim()) return;
+    if (dayType === "Weekly Holiday" && !weekday) return;
+    if (dayType !== "Weekly Holiday" && !date) return;
+    if (dayType === "Day To Day" && !endDate) return;
+    setHolidays([...holidays, {
+      id: Date.now(), company, dayType, title,
+      date: dayType === "Weekly Holiday" ? "" : date,
+      endDate: dayType === "Day To Day" ? endDate : "",
+      weekday: dayType === "Weekly Holiday" ? weekday : "",
+      type, status,
+    }]);
+    setTitle(""); setDate(""); setEndDate("");
   };
   const remove = (id) => setHolidays(holidays.filter((h) => h.id !== id));
-  const sorted = [...holidays].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...holidays].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
   const year = cursor.getFullYear(), month = cursor.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
@@ -849,18 +1185,74 @@ function HolidayCalendar({ holidays, setHolidays }) {
   const cells = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  const holidayByDate = {};
-  holidays.forEach((h) => { holidayByDate[h.date] = h; });
   const pad = (n) => String(n).padStart(2, "0");
+
+  const holidayByDate = {};
+  holidays.forEach((h) => {
+    if (h.dayType === "Weekly Holiday" && h.weekday) {
+      for (let d = 1; d <= daysInMonth; d++) {
+        if (new Date(year, month, d).getDay() === WEEKDAY_INDEX[h.weekday]) {
+          holidayByDate[`${year}-${pad(month + 1)}-${pad(d)}`] = h;
+        }
+      }
+    } else if (h.dayType === "Day To Day" && h.date && h.endDate) {
+      let cur = new Date(h.date);
+      const end = new Date(h.endDate);
+      while (cur <= end) {
+        holidayByDate[`${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`] = h;
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else if (h.date) {
+      holidayByDate[h.date] = h;
+    }
+  });
 
   return (
     <div style={{ padding: 24, display: "flex", gap: 20, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 260 }}>
-        <Panel title="Add Holiday">
-          <Field label="Holiday Title" required><TInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Victory Day" /></Field>
-          <Field label="Date" required><TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+      <div style={{ flex: 1, minWidth: 280 }}>
+        <Panel title="Holiday Create">
+          <Field label="Company">
+            <TSelect value={company} onChange={(e) => setCompany(e.target.value)}>
+              {COMPANIES.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+            </TSelect>
+          </Field>
+          <Field label="Holiday Day Type">
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              {["Single", "Day To Day", "Weekly Holiday"].map((o) => (
+                <RadioDot key={o} label={o} checked={dayType === o} onClick={() => setDayType(o)} />
+              ))}
+            </div>
+          </Field>
+          <Field label="Holiday Title" required>
+            <TInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Victory Day" />
+          </Field>
+          {dayType === "Weekly Holiday" ? (
+            <Field label="Weekday" required>
+              <TSelect value={weekday} onChange={(e) => setWeekday(e.target.value)}>
+                {WEEKDAYS.map((d) => <option key={d}>{d}</option>)}
+              </TSelect>
+            </Field>
+          ) : (
+            <Field label={dayType === "Day To Day" ? "Start Date" : "Date"} required>
+              <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+          )}
+          {dayType === "Day To Day" && (
+            <Field label="End Date" required>
+              <TInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </Field>
+          )}
           <Field label="Holiday Type">
-            <TSelect value={type} onChange={(e) => setType(e.target.value)}><option>Government</option><option>Special</option></TSelect>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <TypePill label="Government" color={T.red} checked={type === "Government"} onClick={() => setType("Government")} />
+              <TypePill label="Special" color={T.amberDeep} checked={type === "Special"} onClick={() => setType("Special")} />
+            </div>
+          </Field>
+          <Field label="Status">
+            <div style={{ display: "flex", gap: 16 }}>
+              <RadioDot label="Active" color={T.green} checked={status === "Active"} onClick={() => setStatus("Active")} />
+              <RadioDot label="In active" color={T.slate} checked={status === "In active"} onClick={() => setStatus("In active")} />
+            </div>
           </Field>
           <Btn variant="primary" onClick={add}><Plus size={14} /> Save Holiday</Btn>
         </Panel>
@@ -905,19 +1297,22 @@ function HolidayCalendar({ holidays, setHolidays }) {
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead><tr style={{ textAlign: "left" }}>
-                {["Date", "Title", "Type", "Status", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
+                {["Company", "When", "Title", "Type", "Status", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {sorted.map((h) => (
                   <tr key={h.id} style={{ borderBottom: `1px solid ${T.line}` }}>
-                    <td style={{ padding: "10px 6px", color: T.inkSoft }}>{h.date}</td>
+                    <td style={{ padding: "10px 6px", color: T.inkSoft }}>{h.company ? companyName(h.company) : "—"}</td>
+                    <td style={{ padding: "10px 6px", color: T.inkSoft }}>
+                      {h.dayType === "Weekly Holiday" ? `Every ${h.weekday}` : h.dayType === "Day To Day" ? `${h.date} → ${h.endDate}` : h.date}
+                    </td>
                     <td style={{ padding: "10px 6px", fontWeight: 700 }}>{h.title}</td>
                     <td style={{ padding: "10px 6px" }}><Badge tone={h.type === "Government" ? "red" : "orange"}>{h.type}</Badge></td>
-                    <td style={{ padding: "10px 6px" }}><Badge tone="green">{h.status}</Badge></td>
+                    <td style={{ padding: "10px 6px" }}><Badge tone={h.status === "In active" ? "slate" : "green"}>{h.status || "Active"}</Badge></td>
                     <td style={{ padding: "10px 6px", textAlign: "right" }}><IconBtn icon={Trash2} tone={T.red} onClick={() => remove(h.id)} /></td>
                   </tr>
                 ))}
-                {sorted.length === 0 && <tr><td colSpan={5} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No holidays scheduled yet.</td></tr>}
+                {sorted.length === 0 && <tr><td colSpan={6} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No holidays scheduled yet.</td></tr>}
               </tbody>
             </table>
           )}
@@ -1421,8 +1816,9 @@ const TITLES = {
   dashboard: "Dashboard", employees: "Employee List", departments: "Department",
   holidays: "Holiday Calendar", shifts: "Shift Roster", bonus: "Bonus Type",
   gazette: "Gazette Calculation", salary: "Salary", useraccess: "User Access",
+  group: "Group", probation: "Probation Period",
 };
-const PERM_OF = { dashboard: "Dashboard", employees: "Employees", departments: "Departments", holidays: "Holidays", shifts: "Shifts", bonus: "Bonus", gazette: "Gazette", salary: "Salary", useraccess: "User Access" };
+const PERM_OF = { dashboard: "Dashboard", employees: "Employees", departments: "Departments", holidays: "Holidays", shifts: "Shifts", bonus: "Bonus", gazette: "Gazette", salary: "Salary", useraccess: "User Access", group: "Employee Group", probation: "Probation Period" };
 
 export default function App() {
   const [booting, setBooting] = useState(true);
@@ -1438,15 +1834,19 @@ export default function App() {
   const [gazettes, setGazettes] = useSynced(STORE_KEYS.gazettes, seedGazettes, ready);
   const [users, setUsers] = useSynced(STORE_KEYS.users, seedUsers, ready);
   const [salarySheets, setSalarySheets] = useSynced(STORE_KEYS.salarySheets, {}, ready);
+  const [employeeGroups, setEmployeeGroups] = useSynced(STORE_KEYS.employeeGroups, seedEmployeeGroups, ready);
+  const [probationPeriods, setProbationPeriods] = useSynced(STORE_KEYS.probationPeriods, seedProbationPeriods, ready);
 
   useEffect(() => {
     (async () => {
-      const [emp, dep, hol, shf, bon, gaz, usr, sal] = await Promise.all([
+      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb] = await Promise.all([
         storageGet(STORE_KEYS.employees), storageGet(STORE_KEYS.departments),
         storageGet(STORE_KEYS.holidays), storageGet(STORE_KEYS.shifts),
         storageGet(STORE_KEYS.bonusTypes), storageGet(STORE_KEYS.gazettes),
         storageGet(STORE_KEYS.users),
         storageGet(STORE_KEYS.salarySheets),
+        storageGet(STORE_KEYS.employeeGroups),
+        storageGet(STORE_KEYS.probationPeriods),
       ]);
       const session = sessionGet();
       if (emp) setEmployees(emp);
@@ -1456,6 +1856,8 @@ export default function App() {
       if (bon) setBonusTypes(bon);
       if (gaz) setGazettes(gaz);
       if (sal) setSalarySheets(sal);
+      if (grp) setEmployeeGroups(grp);
+      if (prb) setProbationPeriods(prb);
       const finalUsers = usr || seedUsers;
       if (usr) setUsers(usr);
       if (session) {
@@ -1505,12 +1907,14 @@ export default function App() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar title={TITLES[safeView]} user={authed} onLogout={logout} />
         {safeView === "dashboard" && <Dashboard employees={employees} />}
-        {safeView === "employees" && <EmployeeList employees={employees} departments={departments} onAdd={addEmployee} onDelete={removeEmployee} canEdit={canEdit} />}
+        {safeView === "employees" && <EmployeeList employees={employees} departments={departments} groups={employeeGroups} onAdd={addEmployee} onDelete={removeEmployee} canEdit={canEdit} />}
         {safeView === "departments" && <Departments departments={departments} setDepartments={setDepartments} />}
         {safeView === "holidays" && <HolidayCalendar holidays={holidays} setHolidays={setHolidays} />}
         {safeView === "shifts" && <Shifts shifts={shifts} setShifts={setShifts} />}
         {safeView === "bonus" && <BonusTypes bonusTypes={bonusTypes} setBonusTypes={setBonusTypes} />}
         {safeView === "gazette" && <GazetteCalc gazettes={gazettes} setGazettes={setGazettes} />}
+        {safeView === "group" && <EmployeeGroups groups={employeeGroups} setGroups={setEmployeeGroups} />}
+        {safeView === "probation" && <ProbationPeriod periods={probationPeriods} setPeriods={setProbationPeriods} />}
         {safeView === "salary" && (
           <Salary
             employees={employees}
