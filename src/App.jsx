@@ -7,6 +7,7 @@ import {
   Search, Plus, Pencil, Trash2, ChevronRight, ChevronLeft, ChevronDown, Check, X,
   Bell, UserPlus, Eye, KeyRound, Lock, LogOut, Loader2, Settings, Layers,
   Factory, UserCog, FileSpreadsheet, ChevronsRight, Wallet, Printer, RefreshCcw,
+  SlidersHorizontal, PenLine,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import companyLogo from "./assets/company-logo.png";
@@ -126,8 +127,28 @@ const seedEmployeeGroups = [
 
 const seedProbationPeriods = [];
 
+/* Global Setting — mirrors the reference software's "Global Setting" page.
+   Some toggles are fully wired into the app (marked below); a few are kept
+   as saved preferences only because there's no matching module yet (e.g. a
+   General Store / OutWork module), and are labelled as "reserved" in the UI
+   so nothing is silently ignored. */
+const defaultGlobalSettings = {
+  storeTitle: "",                 // reserved — no General Store module yet
+  outworkDatePickerAllOpen: false, // reserved — no Out Work module yet
+  summaryGrossSalaryGet: false,    // wired: Gross Salary column in Employee List
+  fingerPrintAttendanceSheet: false, // reserved — no Attendance Sheet module yet
+  cardNoInList: true,              // wired: Card No column in Employee List
+  customFullId: true,              // wired: company-prefixed Full ID vs plain ID
+  loginOption: false,              // wired: Admin/Employee login toggle on Login page
+  attendanceChart: true,           // wired: show/hide attendance chart on Dashboard
+  dashboardPreference: "default",  // wired: "default" | "company" dashboard layout
+  lineNumber: true,                // wired: Line field on Employee form/list
+  signature: true,                 // wired: Signature field on Employee form
+  topbarColor: "#dfe2cd",          // wired: Topbar background color
+};
+
 const ROLE_PERMS = {
-  Admin: ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Gazette", "Salary", "User Access", "Employee Group", "Probation Period"],
+  Admin: ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Gazette", "Salary", "User Access", "Employee Group", "Probation Period", "Global Setting"],
   "HR Manager": ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Salary", "Employee Group", "Probation Period"],
   Viewer: ["Dashboard", "Employees"],
 };
@@ -175,6 +196,7 @@ const STORE_KEYS = {
   salarySheets: "hrm2:salarySheets",
   employeeGroups: "hrm2:employeeGroups",
   probationPeriods: "hrm2:probationPeriods",
+  globalSettings: "hrm2:globalSettings",
 };
 
 async function storageGet(key) {
@@ -321,10 +343,11 @@ function IconBtn({ icon: Icon, onClick, tone = T.blue, title }) {
 /* ------------------------------------------------------------------ */
 /*  Login                                                               */
 /* ------------------------------------------------------------------ */
-function Login({ users, onLogin }) {
+function Login({ users, onLogin, loginOption }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loginAs, setLoginAs] = useState("admin");
 
   const submit = (e) => {
     e.preventDefault();
@@ -343,6 +366,25 @@ function Login({ users, onLogin }) {
           <div style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 800, color: T.ink, lineHeight: 1.3 }}>Nippon Paint (Bangladesh)<br />Private Limited</div>
           <div style={{ fontSize: 11, letterSpacing: 1.5, color: T.inkSoft, textTransform: "uppercase", marginTop: 6 }}>Workforce & Payroll Register</div>
         </div>
+        {loginOption && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {[{ k: "admin", l: "Admin / HR" }, { k: "employee", l: "Employee" }].map((o) => (
+              <button
+                type="button"
+                key={o.k}
+                onClick={() => setLoginAs(o.k)}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 7, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                  border: `1px solid ${loginAs === o.k ? T.amber : T.line}`,
+                  background: loginAs === o.k ? T.amber : "transparent",
+                  color: loginAs === o.k ? T.navy : T.inkSoft,
+                }}
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+        )}
         <Field label="Username" required>
           <TInput value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" autoFocus />
         </Field>
@@ -357,6 +399,11 @@ function Login({ users, onLogin }) {
           Demo — <b>admin / admin123</b> (Admin)<br />
           or <b>hr.rahim / hr12345</b> (HR Manager)
         </div>
+        {!supabase && (
+          <div style={{ marginTop: 12, padding: "9px 12px", background: "#FDF3E7", border: `1px solid ${T.amberDeep}`, borderRadius: 8, fontSize: 11, color: T.amberDeep, lineHeight: 1.6 }}>
+            ⚠ Supabase কানেক্ট করা নেই — ডেটা এখনই স্থায়ীভাবে সেভ হবে না। README-এর সেটআপ ধাপ দেখুন।
+          </div>
+        )}
       </form>
     </div>
   );
@@ -367,6 +414,7 @@ function Login({ users, onLogin }) {
 /* ------------------------------------------------------------------ */
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutGrid, perm: "Dashboard" },
+  { key: "globalsettings", label: "Global Setting", icon: SlidersHorizontal, perm: "Global Setting" },
   { key: "employees", label: "Employees", icon: Users, perm: "Employees" },
   { key: "salary", label: "Salary", icon: Wallet, perm: "Salary" },
   {
@@ -443,9 +491,9 @@ function Sidebar({ view, setView, allowed }) {
   );
 }
 
-function Topbar({ title, user, onLogout }) {
+function Topbar({ title, user, onLogout, bgColor }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 26px", borderBottom: `1px solid ${T.line}`, background: T.card }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 26px", borderBottom: `1px solid ${T.line}`, background: bgColor || T.card }}>
       <div>
         <div style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: T.ink }}>{title}</div>
         <div style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 2 }}>
@@ -474,9 +522,11 @@ function Topbar({ title, user, onLogout }) {
 /* ------------------------------------------------------------------ */
 /*  Dashboard                                                           */
 /* ------------------------------------------------------------------ */
-function Dashboard({ employees }) {
+function Dashboard({ employees, settings = defaultGlobalSettings }) {
   const total = employees.length;
   const active = employees.filter((e) => e.status === "Activated").length;
+  const showCompanyWise = settings.dashboardPreference !== "default";
+  const showAttendanceChart = settings.attendanceChart;
 
   return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
@@ -488,46 +538,50 @@ function Dashboard({ employees }) {
         <StatCard label="Out Of Work" value={0} accent={T.violet} icon={ChevronsRight} />
       </div>
 
-      <div>
-        <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4, color: T.inkSoft, textTransform: "uppercase", marginBottom: 10 }}>
-          Company-wise overview
-        </div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {COMPANIES.map((c, i) => {
-            const list = employees.filter((e) => e.company === c.key);
-            const activeCount = list.filter((e) => e.status === "Activated").length;
-            const barColors = [T.blue, T.green, T.orange, T.violet];
-            return (
-              <div key={c.key} style={{ flex: "1 1 200px", minWidth: 190, background: T.card, borderRadius: 10, border: `1px solid ${T.line}`, overflow: "hidden" }}>
-                <div style={{ background: barColors[i % barColors.length], color: "#fff", padding: "10px 14px", fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 13.5 }}>{c.short}</div>
-                <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-                  <Row label="Total Employee" value={list.length} />
-                  <Row label="Today Attended" value={activeCount} highlight />
-                  <Row label="Today Leave" value={0} />
-                  <Row label="Today Outwork" value={0} />
+      {showCompanyWise && (
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4, color: T.inkSoft, textTransform: "uppercase", marginBottom: 10 }}>
+            Company-wise overview
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            {COMPANIES.map((c, i) => {
+              const list = employees.filter((e) => e.company === c.key);
+              const activeCount = list.filter((e) => e.status === "Activated").length;
+              const barColors = [T.blue, T.green, T.orange, T.violet];
+              return (
+                <div key={c.key} style={{ flex: "1 1 200px", minWidth: 190, background: T.card, borderRadius: 10, border: `1px solid ${T.line}`, overflow: "hidden" }}>
+                  <div style={{ background: barColors[i % barColors.length], color: "#fff", padding: "10px 14px", fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 13.5 }}>{c.short}</div>
+                  <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <Row label="Total Employee" value={list.length} />
+                    <Row label="Today Attended" value={activeCount} highlight />
+                    <Row label="Today Leave" value={0} />
+                    <Row label="Today Outwork" value={0} />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-        <div style={{ flex: 2, minWidth: 380 }}>
-          <Panel title="Employee Attendance — Current Cycle">
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={attendanceData}>
-                <CartesianGrid stroke={T.line} vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.line }} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.line }} tickLine={false} />
-                <Tooltip contentStyle={{ fontSize: 12, border: `1px solid ${T.line}`, borderRadius: 8 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="present" name="Present" fill={T.blue} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="absent" name="Absent" fill={T.amber} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Panel>
-        </div>
+        {showAttendanceChart && (
+          <div style={{ flex: 2, minWidth: 380 }}>
+            <Panel title="Employee Attendance — Current Cycle">
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={attendanceData}>
+                  <CartesianGrid stroke={T.line} vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.line }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: T.inkSoft }} axisLine={{ stroke: T.line }} tickLine={false} />
+                  <Tooltip contentStyle={{ fontSize: 12, border: `1px solid ${T.line}`, borderRadius: 8 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="present" name="Present" fill={T.blue} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="absent" name="Absent" fill={T.amber} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 260, display: "flex", flexDirection: "column", gap: 20 }}>
           <Panel title="Login Status">
             {recentLogins.map((l, i) => (
@@ -636,7 +690,13 @@ function companyName(key) {
   return COMPANIES.find((c) => c.key === key)?.name || key;
 }
 
-function EmployeeList({ employees, departments, groups, onAdd, onDelete, canEdit }) {
+function fullEmployeeId(e) {
+  const c = COMPANIES.find((x) => x.key === e.company);
+  const prefix = (c?.short || "EMP").replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 4);
+  return `${prefix}-${e.id}`;
+}
+
+function EmployeeList({ employees, departments, groups, onAdd, onDelete, canEdit, settings = defaultGlobalSettings }) {
   const [q, setQ] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -648,7 +708,21 @@ function EmployeeList({ employees, departments, groups, onAdd, onDelete, canEdit
     (!companyFilter || e.company === companyFilter)
   );
 
-  if (adding) return <AddEmployeeWizard departments={departments} groups={groups} onCancel={() => setAdding(false)} onSave={(emp) => { onAdd(emp); setAdding(false); }} />;
+  if (adding) return <AddEmployeeWizard departments={departments} groups={groups} settings={settings} onCancel={() => setAdding(false)} onSave={(emp) => { onAdd(emp); setAdding(false); }} />;
+
+  const cols = [
+    "ID",
+    "Name",
+    "Joining Date",
+    "Company",
+    "Department",
+    "Designation",
+    ...(settings.cardNoInList ? ["Card No"] : []),
+    ...(settings.summaryGrossSalaryGet ? ["Gross Salary"] : []),
+    ...(settings.lineNumber ? ["Line"] : []),
+    "Status",
+    "",
+  ];
 
   return (
     <div style={{ padding: 24 }}>
@@ -672,20 +746,23 @@ function EmployeeList({ employees, departments, groups, onAdd, onDelete, canEdit
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
-              {["ID", "Name", "Joining Date", "Company", "Department", "Designation", "Status", ""].map((h) => (
-                <th key={h} style={{ padding: "9px 6px", fontSize: 11, letterSpacing: 0.3, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+              {cols.map((h, i) => (
+                <th key={`${h}-${i}`} style={{ padding: "9px 6px", fontSize: 11, letterSpacing: 0.3, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.map((e) => (
               <tr key={e.id} style={{ borderBottom: `1px solid ${T.line}` }}>
-                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{e.id}</td>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{settings.customFullId ? fullEmployeeId(e) : e.id}</td>
                 <td style={{ padding: "10px 6px", fontWeight: 700, color: T.ink }}>{e.name}</td>
                 <td style={{ padding: "10px 6px" }}>{e.joining}</td>
                 <td style={{ padding: "10px 6px" }}>{companyName(e.company)}</td>
                 <td style={{ padding: "10px 6px" }}>{e.department}</td>
                 <td style={{ padding: "10px 6px" }}>{e.designation}</td>
+                {settings.cardNoInList && <td style={{ padding: "10px 6px" }}>{e.cardNo || "—"}</td>}
+                {settings.summaryGrossSalaryGet && <td style={{ padding: "10px 6px" }}>{e.grossSalary ? e.grossSalary.toLocaleString() : "—"}</td>}
+                {settings.lineNumber && <td style={{ padding: "10px 6px" }}>{e.line || "—"}</td>}
                 <td style={{ padding: "10px 6px" }}><Badge tone={e.status === "Activated" ? "green" : "red"}>{e.status}</Badge></td>
                 <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
                   <IconBtn icon={Eye} tone={T.slate} title="View" />
@@ -695,7 +772,7 @@ function EmployeeList({ employees, departments, groups, onAdd, onDelete, canEdit
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={8} style={{ padding: 24, textAlign: "center", color: T.inkSoft }}>No employees match this search.</td></tr>
+              <tr><td colSpan={cols.length} style={{ padding: 24, textAlign: "center", color: T.inkSoft }}>No employees match this search.</td></tr>
             )}
           </tbody>
         </table>
@@ -715,7 +792,7 @@ function StepDot({ n, active, done, label }) {
   );
 }
 
-function AddEmployeeWizard({ departments, groups, onCancel, onSave }) {
+function AddEmployeeWizard({ departments, groups, onCancel, onSave, settings = defaultGlobalSettings }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     joining: "", company: COMPANIES[0].key, department: departments[0]?.name || "", designation: "",
@@ -726,6 +803,7 @@ function AddEmployeeWizard({ departments, groups, onCancel, onSave }) {
     employeeType: "", fingerPrintId: "", spouseName: "", mfsType: "", mfsNumber: "",
     facilities: "No Facilities", employmentStatus: "Permanent", cardNo: "", overtime: "Yes",
     height: "", weight: "", bloodGroup: "", emergencyName: "", relation: "", emergencyPhone: "",
+    line: "", signature: "", grossSalary: "",
   });
   const [education, setEducation] = useState([{ id: 1, exam: "", cgpa: "", year: "", institute: "" }]);
   const [experience, setExperience] = useState([{ id: 1, company: "", designation: "", duration: "" }]);
@@ -742,7 +820,12 @@ function AddEmployeeWizard({ departments, groups, onCancel, onSave }) {
 
   const save = () => {
     const id = form.empId.trim() || String(Date.now()).slice(-8);
-    onSave({ id, name: form.name || "Unnamed", joining: form.joining || "—", company: form.company, department: form.department, designation: form.designation || "—", status: "Activated", phone: form.phone });
+    onSave({
+      id, name: form.name || "Unnamed", joining: form.joining || "—", company: form.company,
+      department: form.department, designation: form.designation || "—", status: "Activated", phone: form.phone,
+      cardNo: form.cardNo, line: form.line, signature: form.signature,
+      grossSalary: form.grossSalary ? Number(form.grossSalary) : undefined,
+    });
   };
 
   const miniTableHeadStyle = { padding: "8px 6px", fontSize: 10.5, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}`, textAlign: "left" };
@@ -897,6 +980,20 @@ function AddEmployeeWizard({ departments, groups, onCancel, onSave }) {
             <Field label="Emergency Contact Name"><TInput value={form.emergencyName} onChange={set("emergencyName")} /></Field>
             <Field label="Relation"><TInput value={form.relation} onChange={set("relation")} placeholder="e.g. Father, Spouse" /></Field>
             <Field label="Emergency Phone"><TInput value={form.emergencyPhone} onChange={set("emergencyPhone")} /></Field>
+            {settings.summaryGrossSalaryGet && (
+              <Field label="Gross Salary"><TInput type="number" value={form.grossSalary} onChange={set("grossSalary")} placeholder="e.g. 12000" /></Field>
+            )}
+            {settings.lineNumber && (
+              <Field label="Line"><TInput value={form.line} onChange={set("line")} placeholder="e.g. Line 3" /></Field>
+            )}
+            {settings.signature && (
+              <Field label="Signature">
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <PenLine size={14} color={T.inkSoft} />
+                  <TInput value={form.signature} onChange={set("signature")} placeholder="Type name to record signature on file" />
+                </div>
+              </Field>
+            )}
           </div>
         )}
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.line}` }}>
@@ -1810,15 +1907,122 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
 }
 
 /* ------------------------------------------------------------------ */
+/*  Global Setting                                                      */
+/* ------------------------------------------------------------------ */
+function YesNoRow({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 18 }}>
+      <RadioDot label="Yes" color={T.green} checked={!!value} onClick={() => onChange(true)} />
+      <RadioDot label="No" color={T.slate} checked={!value} onClick={() => onChange(false)} />
+    </div>
+  );
+}
+
+function SettingRow({ title, note, children, last }) {
+  return (
+    <tr style={{ borderBottom: last ? "none" : `1px solid ${T.line}` }}>
+      <td style={{ padding: "12px 14px", verticalAlign: "top", width: "55%" }}>
+        <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600 }}>{title}</div>
+        {note && <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>{note}</div>}
+      </td>
+      <td style={{ padding: "12px 14px", verticalAlign: "top" }}>{children}</td>
+    </tr>
+  );
+}
+
+function GlobalSettings({ settings, setSettings }) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const upd = (k) => (v) => setForm({ ...form, [k]: v });
+  const save = () => setSettings(form);
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+
+  return (
+    <div style={{ padding: 24 }}>
+      <Panel
+        title="Global Setting"
+        right={<Btn variant="primary" small onClick={save} disabled={!dirty}><Check size={13} /> Save Changes</Btn>}
+        pad={0}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: T.canvas }}>
+              <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.3, color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>Title</th>
+              <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.3, color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <SettingRow title="General Store (Reference) Title Change" note="Reserved — will apply once a General Store module is added.">
+              <TInput value={form.storeTitle} onChange={(e) => upd("storeTitle")(e.target.value)} placeholder="Custom title" style={{ maxWidth: 260 }} />
+            </SettingRow>
+            <SettingRow title="OutWork DatePicker All Open" note="Reserved — will apply once an Out Work module is added.">
+              <YesNoRow value={form.outworkDatePickerAllOpen} onChange={upd("outworkDatePickerAllOpen")} />
+            </SettingRow>
+            <SettingRow title="Employee Summary Gross Salary Get" note="Shows a Gross Salary column in the Employee List.">
+              <YesNoRow value={form.summaryGrossSalaryGet} onChange={upd("summaryGrossSalaryGet")} />
+            </SettingRow>
+            <SettingRow title="Finger Print Id Get Attendance Sheet" note="Reserved — will apply once an Attendance Sheet module is added.">
+              <YesNoRow value={form.fingerPrintAttendanceSheet} onChange={upd("fingerPrintAttendanceSheet")} />
+            </SettingRow>
+            <SettingRow title="Set Employee List Card No" note="Shows a Card No column in the Employee List.">
+              <YesNoRow value={form.cardNoInList} onChange={upd("cardNoInList")} />
+            </SettingRow>
+            <SettingRow title="Custom Employee Full Id" note="Shows company-prefixed Full ID (e.g. ATSM-21082061) instead of plain ID.">
+              <YesNoRow value={form.customFullId} onChange={upd("customFullId")} />
+            </SettingRow>
+            <SettingRow title="Admin & Employee Login Option" note="Adds an Admin/Employee switch on the Login page.">
+              <YesNoRow value={form.loginOption} onChange={upd("loginOption")} />
+            </SettingRow>
+            <SettingRow title="Employee Attendance Chart" note="Shows/hides the attendance chart on the Dashboard.">
+              <YesNoRow value={form.attendanceChart} onChange={upd("attendanceChart")} />
+            </SettingRow>
+            <SettingRow title="Would you prefer which Dashboard?" note="Default hides per-company breakdown; Company Wise shows it.">
+              <div style={{ display: "flex", gap: 18 }}>
+                <RadioDot label="Default" color={T.blue} checked={form.dashboardPreference === "default"} onClick={() => upd("dashboardPreference")("default")} />
+                <RadioDot label="Company Wise" color={T.blue} checked={form.dashboardPreference === "company"} onClick={() => upd("dashboardPreference")("company")} />
+              </div>
+            </SettingRow>
+            <SettingRow title="Employee Line Number" note="Adds a Line field on the Employee form and a Line column in the list.">
+              <YesNoRow value={form.lineNumber} onChange={upd("lineNumber")} />
+            </SettingRow>
+            <SettingRow title="Employee Signature" note="Adds a Signature field on the Employee form.">
+              <YesNoRow value={form.signature} onChange={upd("signature")} />
+            </SettingRow>
+            <SettingRow title="Topbar Background Color (color name/code)" last>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <input type="color" value={form.topbarColor} onChange={(e) => upd("topbarColor")(e.target.value)} style={{ width: 34, height: 30, border: `1px solid ${T.line}`, borderRadius: 6, padding: 0, cursor: "pointer" }} />
+                <TInput value={form.topbarColor} onChange={(e) => upd("topbarColor")(e.target.value)} style={{ maxWidth: 140 }} />
+              </div>
+            </SettingRow>
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  App shell                                                           */
 /* ------------------------------------------------------------------ */
+function NoDbBanner() {
+  return (
+    <div style={{
+      background: "#FDF3E7", borderBottom: `1px solid ${T.amberDeep}`, color: T.amberDeep,
+      padding: "9px 26px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 8, fontWeight: 600,
+    }}>
+      <span style={{ fontSize: 15 }}>⚠</span>
+      Supabase কানেক্ট করা নেই — যা যোগ করছেন তা এই ব্রাউজারেই সাময়িকভাবে থাকছে, রিফ্রেশ দিলে বা অন্য ডিভাইস থেকে খুললে হারিয়ে যাবে। স্থায়ীভাবে সেভ করতে README-এর "৪. শেয়ার্ড ডেটাবেস (Supabase)" ধাপ অনুসরণ করে <code>.env</code>-এ <code>VITE_SUPABASE_URL</code> ও <code>VITE_SUPABASE_ANON_KEY</code> যোগ করুন।
+    </div>
+  );
+}
+
 const TITLES = {
   dashboard: "Dashboard", employees: "Employee List", departments: "Department",
   holidays: "Holiday Calendar", shifts: "Shift Roster", bonus: "Bonus Type",
   gazette: "Gazette Calculation", salary: "Salary", useraccess: "User Access",
-  group: "Group", probation: "Probation Period",
+  group: "Group", probation: "Probation Period", globalsettings: "Global Setting",
 };
-const PERM_OF = { dashboard: "Dashboard", employees: "Employees", departments: "Departments", holidays: "Holidays", shifts: "Shifts", bonus: "Bonus", gazette: "Gazette", salary: "Salary", useraccess: "User Access", group: "Employee Group", probation: "Probation Period" };
+const PERM_OF = { dashboard: "Dashboard", employees: "Employees", departments: "Departments", holidays: "Holidays", shifts: "Shifts", bonus: "Bonus", gazette: "Gazette", salary: "Salary", useraccess: "User Access", group: "Employee Group", probation: "Probation Period", globalsettings: "Global Setting" };
 
 export default function App() {
   const [booting, setBooting] = useState(true);
@@ -1836,10 +2040,11 @@ export default function App() {
   const [salarySheets, setSalarySheets] = useSynced(STORE_KEYS.salarySheets, {}, ready);
   const [employeeGroups, setEmployeeGroups] = useSynced(STORE_KEYS.employeeGroups, seedEmployeeGroups, ready);
   const [probationPeriods, setProbationPeriods] = useSynced(STORE_KEYS.probationPeriods, seedProbationPeriods, ready);
+  const [globalSettings, setGlobalSettings] = useSynced(STORE_KEYS.globalSettings, defaultGlobalSettings, ready);
 
   useEffect(() => {
     (async () => {
-      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb] = await Promise.all([
+      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb, gset] = await Promise.all([
         storageGet(STORE_KEYS.employees), storageGet(STORE_KEYS.departments),
         storageGet(STORE_KEYS.holidays), storageGet(STORE_KEYS.shifts),
         storageGet(STORE_KEYS.bonusTypes), storageGet(STORE_KEYS.gazettes),
@@ -1847,6 +2052,7 @@ export default function App() {
         storageGet(STORE_KEYS.salarySheets),
         storageGet(STORE_KEYS.employeeGroups),
         storageGet(STORE_KEYS.probationPeriods),
+        storageGet(STORE_KEYS.globalSettings),
       ]);
       const session = sessionGet();
       if (emp) setEmployees(emp);
@@ -1858,6 +2064,7 @@ export default function App() {
       if (sal) setSalarySheets(sal);
       if (grp) setEmployeeGroups(grp);
       if (prb) setProbationPeriods(prb);
+      if (gset) setGlobalSettings({ ...defaultGlobalSettings, ...gset });
       const finalUsers = usr || seedUsers;
       if (usr) setUsers(usr);
       if (session) {
@@ -1894,7 +2101,7 @@ export default function App() {
     );
   }
 
-  if (!authed) return <Login users={users} onLogin={login} />;
+  if (!authed) return <Login users={users} onLogin={login} loginOption={globalSettings.loginOption} />;
 
   const allowed = ROLE_PERMS[authed.role] || [];
   const canEdit = authed.role !== "Viewer";
@@ -1905,9 +2112,11 @@ export default function App() {
       <GoogleFonts />
       <Sidebar view={safeView} setView={setView} allowed={allowed} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <Topbar title={TITLES[safeView]} user={authed} onLogout={logout} />
-        {safeView === "dashboard" && <Dashboard employees={employees} />}
-        {safeView === "employees" && <EmployeeList employees={employees} departments={departments} groups={employeeGroups} onAdd={addEmployee} onDelete={removeEmployee} canEdit={canEdit} />}
+        {!supabase && <NoDbBanner />}
+        <Topbar title={TITLES[safeView]} user={authed} onLogout={logout} bgColor={globalSettings.topbarColor} />
+        {safeView === "dashboard" && <Dashboard employees={employees} settings={globalSettings} />}
+        {safeView === "globalsettings" && <GlobalSettings settings={globalSettings} setSettings={setGlobalSettings} />}
+        {safeView === "employees" && <EmployeeList employees={employees} departments={departments} groups={employeeGroups} onAdd={addEmployee} onDelete={removeEmployee} canEdit={canEdit} settings={globalSettings} />}
         {safeView === "departments" && <Departments departments={departments} setDepartments={setDepartments} />}
         {safeView === "holidays" && <HolidayCalendar holidays={holidays} setHolidays={setHolidays} />}
         {safeView === "shifts" && <Shifts shifts={shifts} setShifts={setShifts} />}
