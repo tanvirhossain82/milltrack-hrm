@@ -7,10 +7,13 @@ import {
   Search, Plus, Pencil, Trash2, ChevronRight, ChevronLeft, ChevronDown, Check, X,
   Bell, UserPlus, Eye, KeyRound, Lock, LogOut, Loader2, Settings, Layers,
   Factory, UserCog, FileSpreadsheet, ChevronsRight, Wallet, Printer, RefreshCcw,
-  SlidersHorizontal, PenLine,
+  SlidersHorizontal, PenLine, Copy, FileText, FileDown,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import companyLogo from "./assets/company-logo.png";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 /* ------------------------------------------------------------------ */
 /*  DESIGN PLAN                                                        */
@@ -197,6 +200,7 @@ const STORE_KEYS = {
   employeeGroups: "hrm2:employeeGroups",
   probationPeriods: "hrm2:probationPeriods",
   globalSettings: "hrm2:globalSettings",
+  payrollRecords: "hrm2:payrollRecords",
 };
 
 async function storageGet(key) {
@@ -337,6 +341,119 @@ function IconBtn({ icon: Icon, onClick, tone = T.blue, title }) {
     <button onClick={onClick} title={title} style={{ width: 27, height: 27, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 6, background: `${tone}1A`, color: tone, cursor: "pointer", marginRight: 5 }}>
       <Icon size={13} />
     </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Export toolbar — Copy / CSV / Excel / PDF, reused across list      */
+/*  pages (Employee List, Payroll List, Group, Bonus Type, etc).       */
+/* ------------------------------------------------------------------ */
+function exportRows(headers, rows) {
+  // rows: array of arrays (already stringified for display)
+  return { headers, rows };
+}
+
+function toCsvValue(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function ExportBar({ title, headers, rows, filename = "export" }) {
+  const [copied, setCopied] = useState(false);
+
+  const doCopy = async () => {
+    const text = [headers.join("\t"), ...rows.map((r) => r.join("\t"))].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — no-op */
+    }
+  };
+
+  const doCsv = () => {
+    const text = [headers.map(toCsvValue).join(","), ...rows.map((r) => r.map(toCsvValue).join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + text], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${filename}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const doExcel = () => {
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, title.slice(0, 28) || "Sheet1");
+    XLSX.writeFile(wb, `${filename}.xlsx`);
+  };
+
+  const doPdf = () => {
+    const doc = new jsPDF({ orientation: headers.length > 6 ? "landscape" : "portrait" });
+    doc.setFontSize(13);
+    doc.text(title, 14, 14);
+    autoTable(doc, {
+      head: [headers], body: rows, startY: 20, styles: { fontSize: 8 },
+      headStyles: { fillColor: [22, 35, 63] },
+    });
+    doc.save(`${filename}.pdf`);
+  };
+
+  const doPrint = () => {
+    const win = window.open("", "_blank", "width=900,height=650");
+    if (!win) return;
+    const tableHtml = `
+      <table>
+        <thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c ?? ""}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table>`;
+    win.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #16233F; }
+            h2 { margin: 0 0 16px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #d9d9d9; padding: 6px 8px; text-align: left; }
+            th { background: #f4f6fa; text-transform: uppercase; font-size: 10.5px; letter-spacing: .3px; }
+          </style>
+        </head>
+        <body>
+          <h2>${title}</h2>
+          ${tableHtml}
+        </body>
+      </html>`);
+    win.document.close();
+    win.focus();
+    win.print();
+  };
+
+  const buttons = [
+    { label: copied ? "Copied!" : "Copy", icon: Copy, onClick: doCopy },
+    { label: "CSV", icon: FileText, onClick: doCsv },
+    { label: "Excel", icon: FileSpreadsheet, onClick: doExcel },
+    { label: "PDF", icon: FileDown, onClick: doPdf },
+    { label: "Print", icon: Printer, onClick: doPrint },
+  ];
+
+  return (
+    <div style={{ display: "inline-flex", borderRadius: 6, overflow: "hidden", border: `1px solid ${T.line}` }}>
+      {buttons.map((b, i) => (
+        <button
+          key={b.label}
+          onClick={b.onClick}
+          title={b.label}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 11px",
+            fontSize: 12, fontWeight: 600, color: T.inkSoft, background: "#fff", cursor: "pointer",
+            border: "none", borderLeft: i === 0 ? "none" : `1px solid ${T.line}`,
+          }}
+        >
+          <b.icon size={12} /> {b.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -724,11 +841,24 @@ function EmployeeList({ employees, departments, groups, onAdd, onDelete, canEdit
     "",
   ];
 
+  const exportHeaders = cols.slice(0, -1);
+  const exportRowsData = filtered.map((e) => {
+    const row = [settings.customFullId ? fullEmployeeId(e) : e.id, e.name, e.joining, companyName(e.company), e.department, e.designation];
+    if (settings.cardNoInList) row.push(e.cardNo || "");
+    if (settings.summaryGrossSalaryGet) row.push(e.grossSalary || "");
+    if (settings.lineNumber) row.push(e.line || "");
+    row.push(e.status);
+    return row;
+  });
+
   return (
     <div style={{ padding: 24 }}>
-      <Panel title={`Employee List — Total ${employees.length}`} right={canEdit && (
-        <Btn variant="primary" onClick={() => setAdding(true)}><UserPlus size={14} /> Add Employee</Btn>
-      )}>
+      <Panel title={`Employee List — Total ${employees.length}`} right={
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportBar title="Employee List" headers={exportHeaders} rows={exportRowsData} filename="employee-list" />
+          {canEdit && <Btn variant="primary" onClick={() => setAdding(true)}><UserPlus size={14} /> Add Employee</Btn>}
+        </div>
+      }>
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
             <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
@@ -1094,7 +1224,8 @@ function EmployeeGroups({ groups, setGroups }) {
         </Panel>
       )}
       <Panel title="Group" right={<Btn variant="primary" small onClick={openNew}><Plus size={14} /> Add Group</Btn>}>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, gap: 10, flexWrap: "wrap" }}>
+          <ExportBar title="Group" headers={["Id", "Name", "Created At", "Updated At"]} rows={filtered.map((g) => [g.id, g.name, g.createdAt, g.updatedAt])} filename="employee-groups" />
           <div style={{ position: "relative", width: 220 }}>
             <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
             <TInput placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
@@ -1173,8 +1304,8 @@ function ProbationPeriod({ periods, setPeriods }) {
         </Panel>
       )}
       <Panel title="Probation Period" right={<Btn variant="primary" small onClick={openNew}><Plus size={14} /> Add Probation Period</Btn>}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, fontSize: 12.5, color: T.inkSoft }}>
-          <span>Display 10 records</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, fontSize: 12.5, color: T.inkSoft, gap: 10, flexWrap: "wrap" }}>
+          <ExportBar title="Probation Period" headers={["Id", "Company", "Period Month", "Period Name", "Created At", "Updated At"]} rows={periods.map((p) => [p.id, companyName(p.company), `${p.months} month(s)`, p.periodName, p.createdAt, p.updatedAt])} filename="probation-period" />
           <div style={{ position: "relative", width: 200 }}>
             <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
             <TInput placeholder="Search" style={{ paddingLeft: 32 }} />
@@ -1503,7 +1634,7 @@ function BonusTypes({ bonusTypes, setBonusTypes }) {
         </Panel>
       </div>
       <div style={{ flex: 2, minWidth: 340 }}>
-        <Panel title="Bonus Types">
+        <Panel title="Bonus Types" right={<ExportBar title="Bonus Types" headers={["Sl", "Group", "Bonus Type"]} rows={bonusTypes.map((b, i) => [i + 1, b.group, b.type])} filename="bonus-types" />}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr style={{ textAlign: "left" }}>
               {["Sl", "Group", "Bonus Type", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
@@ -1678,17 +1809,18 @@ function breakupOf(gross, g) {
   };
 }
 
-function Salary({ employees, setEmployees, gazettes, salarySheets, setSalarySheets, canEdit }) {
+function Salary({ employees, setEmployees, gazettes, salarySheets, setSalarySheets, payrollRecords, setPayrollRecords, canEdit }) {
   const [tab, setTab] = useState("setup");
   return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", gap: 8 }}>
         <Btn variant={tab === "setup" ? "navy" : "quiet"} onClick={() => setTab("setup")}><Wallet size={14} /> Salary Setup</Btn>
         <Btn variant={tab === "sheet" ? "navy" : "quiet"} onClick={() => setTab("sheet")}><FileSpreadsheet size={14} /> Monthly Salary Sheet</Btn>
+        <Btn variant={tab === "payroll" ? "navy" : "quiet"} onClick={() => setTab("payroll")}><Printer size={14} /> Payroll List</Btn>
       </div>
-      {tab === "setup"
-        ? <SalarySetup employees={employees} setEmployees={setEmployees} gazettes={gazettes} canEdit={canEdit} />
-        : <SalarySheet employees={employees} gazettes={gazettes} salarySheets={salarySheets} setSalarySheets={setSalarySheets} canEdit={canEdit} />}
+      {tab === "setup" && <SalarySetup employees={employees} setEmployees={setEmployees} gazettes={gazettes} canEdit={canEdit} />}
+      {tab === "sheet" && <SalarySheet employees={employees} gazettes={gazettes} salarySheets={salarySheets} setSalarySheets={setSalarySheets} canEdit={canEdit} />}
+      {tab === "payroll" && <PayrollList employees={employees} gazettes={gazettes} records={payrollRecords} setRecords={setPayrollRecords} canEdit={canEdit} />}
     </div>
   );
 }
@@ -1833,6 +1965,14 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
         </div>
       ) : (
         <>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <ExportBar
+              title="Monthly Salary Sheet"
+              headers={["ID", "Name", "Basic", "House Rent", "Conveyance", "Medical", "Present", "Working", "Payable"]}
+              rows={rowsWithCalc.map((r) => [r.id, r.name, r.basic, r.houseRent, r.conveyance, r.medical, r.presentDays, r.workingDays, r.payable])}
+              filename={`salary-sheet-${company}-${month}`}
+            />
+          </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: "left" }}>
@@ -1901,6 +2041,261 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
             </div>
           )}
         </>
+      )}
+    </Panel>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Payroll List — a running ledger of individual payroll runs, plus   */
+/*  a "Salary Arrangement" form to add/adjust one entry at a time, and */
+/*  a printable payslip/invoice view. Mirrors the reference software.  */
+/* ------------------------------------------------------------------ */
+function PayslipInvoice({ record, employee, gazettes, onClose }) {
+  const gz = gazetteFor(record.month, gazettes);
+  const b = breakupOf(record.basicSalary, gz);
+  const deductions = (Number(record.deduction) || 0) + (Number(record.loan) || 0);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(20,26,40,0.55)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "30px 16px", zIndex: 50, overflowY: "auto" }}>
+      <div style={{ background: "#fff", width: 640, borderRadius: 10, boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }} className="payslip-print">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${T.line}` }} className="no-print">
+          <div style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 15 }}>Invoice / Payslip</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn small variant="primary" onClick={() => window.print()}><Printer size={13} /> Print</Btn>
+            <Btn small variant="quiet" onClick={onClose}><X size={13} /> Close</Btn>
+          </div>
+        </div>
+        <div style={{ padding: "26px 30px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <img src={companyLogo} alt="" style={{ width: 40, height: "auto" }} />
+              <div>
+                <div style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 15, color: T.ink }}>Nippon Paint (Bangladesh) Pvt. Ltd.</div>
+                <div style={{ fontSize: 11, color: T.inkSoft }}>Workforce & Payroll Register</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 12.5, color: T.ink, fontWeight: 700 }}>
+              Payslip for {record.month}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 24px", fontSize: 12.5, marginBottom: 18, paddingBottom: 16, borderBottom: `1px solid ${T.line}` }}>
+            <Row label="Employee PIN" value={employee?.id || record.employeeId} />
+            <Row label="Employee Name" value={employee?.name || record.employeeName} />
+            <Row label="Department" value={employee?.department || "—"} />
+            <Row label="Designation" value={employee?.designation || "—"} />
+            <Row label="Pay Date" value={record.payDate || "—"} />
+            <Row label="Days / Hours Worked" value={record.hoursWorked || "—"} />
+            <Row label="Paid Type" value={record.paidType} />
+            <Row label="Status" value={record.status} />
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ background: T.canvas }}>
+                <th style={{ textAlign: "left", padding: "8px 10px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft }}>Description</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft }}>Earnings</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft }}>Deductions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["Basic Salary", b.basic, ""],
+                ["Medical Allowance", b.medical, ""],
+                ["House Rent", b.houseRent, ""],
+                ["Conveyance Allowance", b.conveyance, ""],
+                ["Deduction", "", record.deduction || 0],
+                ["Loan", "", record.loan || 0],
+              ].map(([label, earn, ded]) => (
+                <tr key={label} style={{ borderBottom: `1px solid ${T.line}` }}>
+                  <td style={{ padding: "7px 10px" }}>{label}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right" }}>{earn === "" ? "" : `৳ ${Number(earn).toLocaleString()}`}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", color: T.red }}>{ded === "" ? "" : `৳ ${Number(ded).toLocaleString()}`}</td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: `2px solid ${T.ink}` }}>
+                <td style={{ padding: "9px 10px", fontWeight: 700 }}>Working Hours: {record.workingHours || "—"}</td>
+                <td style={{ padding: "9px 10px", textAlign: "right", fontWeight: 700 }}>৳ {(b.basic + b.medical + b.houseRent + b.conveyance).toLocaleString()}</td>
+                <td style={{ padding: "9px 10px", textAlign: "right", fontWeight: 700, color: T.red }}>৳ {deductions.toLocaleString()}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.line}` }}>
+            <div style={{ minWidth: 220 }}>
+              <Row label="Final Salary" value={`৳ ${Number(record.finalSalary || 0).toLocaleString()}`} highlight />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SalaryArrangementModal({ employees, record, onClose, onSubmit }) {
+  const [form, setForm] = useState(record || {
+    employeeId: employees[0]?.id || "", month: currentMonthStr(),
+    basicSalary: "", workingHours: "", hoursWorked: "", payDate: "",
+    deduction: "0", loan: "0", status: "Process", paidType: "Hand Cash",
+  });
+  const set = (k) => (v) => setForm({ ...form, [k]: v });
+  const finalSalary = (Number(form.basicSalary) || 0) - (Number(form.deduction) || 0) - (Number(form.loan) || 0);
+
+  const submit = () => {
+    const emp = employees.find((e) => e.id === form.employeeId);
+    onSubmit({
+      ...form,
+      id: record?.id || String(Date.now()),
+      employeeName: emp?.name || "Unknown",
+      finalSalary,
+    });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(20,26,40,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
+      <div style={{ background: "#fff", width: 560, borderRadius: 10, boxShadow: "0 20px 60px rgba(0,0,0,0.35)", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${T.line}` }}>
+          <div style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 15 }}>Salary Arrangement</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.inkSoft }}><X size={18} /></button>
+        </div>
+        <div style={{ padding: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
+          <Field label="Employee">
+            <TSelect value={form.employeeId} onChange={(e) => set("employeeId")(e.target.value)}>
+              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </TSelect>
+          </Field>
+          <Field label="Month">
+            <TInput type="month" value={form.month} onChange={(e) => set("month")(e.target.value)} />
+          </Field>
+          <Field label="Basic Salary">
+            <TInput type="number" value={form.basicSalary} onChange={(e) => set("basicSalary")(e.target.value)} />
+          </Field>
+          <Field label="Deduction">
+            <TInput type="number" value={form.deduction} onChange={(e) => set("deduction")(e.target.value)} />
+          </Field>
+          <Field label="Working hours">
+            <TInput type="number" value={form.workingHours} onChange={(e) => set("workingHours")(e.target.value)} />
+          </Field>
+          <Field label="Loan">
+            <TInput type="number" value={form.loan} onChange={(e) => set("loan")(e.target.value)} />
+          </Field>
+          <Field label="Hours worked">
+            <TInput type="number" value={form.hoursWorked} onChange={(e) => set("hoursWorked")(e.target.value)} />
+          </Field>
+          <Field label="Final Salary">
+            <TInput readOnly value={finalSalary} style={{ background: T.canvas, fontWeight: 700, color: T.green }} />
+          </Field>
+          <Field label="Pay Date">
+            <TInput type="date" value={form.payDate} onChange={(e) => set("payDate")(e.target.value)} />
+          </Field>
+          <Field label="Status">
+            <div style={{ display: "flex", gap: 16, paddingTop: 6 }}>
+              <RadioDot label="Paid" color={T.green} checked={form.status === "Paid"} onClick={() => set("status")("Paid")} />
+              <RadioDot label="Process" color={T.amberDeep} checked={form.status === "Process"} onClick={() => set("status")("Process")} />
+            </div>
+          </Field>
+          <Field label="Paid Type">
+            <div style={{ display: "flex", gap: 16, paddingTop: 6 }}>
+              <RadioDot label="Hand Cash" color={T.blue} checked={form.paidType === "Hand Cash"} onClick={() => set("paidType")("Hand Cash")} />
+              <RadioDot label="Bank" color={T.blue} checked={form.paidType === "Bank"} onClick={() => set("paidType")("Bank")} />
+            </div>
+          </Field>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "14px 20px", borderTop: `1px solid ${T.line}` }}>
+          <Btn variant="quiet" onClick={onClose}>Close</Btn>
+          <Btn variant="primary" onClick={submit} disabled={!form.employeeId || !form.basicSalary}>Submit</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PayrollList({ employees, gazettes, records, setRecords, canEdit }) {
+  const [q, setQ] = useState("");
+  const [modalRecord, setModalRecord] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [payslipFor, setPayslipFor] = useState(null);
+
+  const filtered = records.filter((r) => !q ||
+    r.employeeName?.toLowerCase().includes(q.toLowerCase()) ||
+    r.employeeId?.toLowerCase?.().includes(q.toLowerCase())
+  );
+
+  const upsert = (rec) => {
+    const exists = records.some((r) => r.id === rec.id);
+    setRecords(exists ? records.map((r) => (r.id === rec.id ? rec : r)) : [rec, ...records]);
+    setShowModal(false);
+    setModalRecord(null);
+  };
+
+  const remove = (id) => setRecords(records.filter((r) => r.id !== id));
+
+  const payslipEmployee = payslipFor ? employees.find((e) => e.id === payslipFor.employeeId) : null;
+
+  return (
+    <Panel
+      title="Payroll List"
+      right={canEdit && (
+        <Btn variant="primary" small onClick={() => { setModalRecord(null); setShowModal(true); }}><Plus size={13} /> Generate Payroll</Btn>
+      )}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
+        <ExportBar
+          title="Payroll List"
+          headers={["PIN", "Employee", "Month", "Salary", "Loan", "Hours", "Deduction", "Total Paid", "Pay Date", "Status"]}
+          rows={filtered.map((r) => [r.employeeId, r.employeeName, r.month, r.basicSalary || 0, r.loan || 0, r.hoursWorked || "", r.deduction || 0, r.finalSalary || 0, r.payDate || "", r.status])}
+          filename="payroll-list"
+        />
+        <div style={{ position: "relative", minWidth: 220 }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: T.inkSoft }} />
+          <TInput placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+        </div>
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ textAlign: "left" }}>
+            {["PIN", "Employee", "Month", "Salary", "Loan", "Hours", "Deduction", "Total Paid", "Pay Date", "Status", "Action"].map((h) => (
+              <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((r) => (
+            <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+              <td style={{ padding: "9px 6px", color: T.inkSoft }}>{r.employeeId}</td>
+              <td style={{ padding: "9px 6px", fontWeight: 700 }}>{r.employeeName}</td>
+              <td style={{ padding: "9px 6px" }}>{r.month}</td>
+              <td style={{ padding: "9px 6px" }}>৳ {Number(r.basicSalary || 0).toLocaleString()}</td>
+              <td style={{ padding: "9px 6px" }}>৳ {Number(r.loan || 0).toLocaleString()}</td>
+              <td style={{ padding: "9px 6px" }}>{r.hoursWorked || "—"}</td>
+              <td style={{ padding: "9px 6px" }}>৳ {Number(r.deduction || 0).toLocaleString()}</td>
+              <td style={{ padding: "9px 6px", fontWeight: 700, color: T.green }}>৳ {Number(r.finalSalary || 0).toLocaleString()}</td>
+              <td style={{ padding: "9px 6px" }}>{r.payDate || "—"}</td>
+              <td style={{ padding: "9px 6px" }}><Badge tone={r.status === "Paid" ? "green" : "orange"}>{r.status}</Badge></td>
+              <td style={{ padding: "9px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                <IconBtn icon={Eye} tone={T.blue} title="View payslip" onClick={() => setPayslipFor(r)} />
+                {canEdit && <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => { setModalRecord(r); setShowModal(true); }} />}
+                {canEdit && <IconBtn icon={Lock} tone={T.red} title="Remove" onClick={() => remove(r.id)} />}
+              </td>
+            </tr>
+          ))}
+          {filtered.length === 0 && (
+            <tr><td colSpan={11} style={{ padding: 24, textAlign: "center", color: T.inkSoft }}>No payroll entries yet — click <b>Generate Payroll</b> to add one.</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {showModal && (
+        <SalaryArrangementModal
+          employees={employees}
+          record={modalRecord}
+          onClose={() => { setShowModal(false); setModalRecord(null); }}
+          onSubmit={upsert}
+        />
+      )}
+      {payslipFor && (
+        <PayslipInvoice record={payslipFor} employee={payslipEmployee} gazettes={gazettes} onClose={() => setPayslipFor(null)} />
       )}
     </Panel>
   );
@@ -2041,10 +2436,11 @@ export default function App() {
   const [employeeGroups, setEmployeeGroups] = useSynced(STORE_KEYS.employeeGroups, seedEmployeeGroups, ready);
   const [probationPeriods, setProbationPeriods] = useSynced(STORE_KEYS.probationPeriods, seedProbationPeriods, ready);
   const [globalSettings, setGlobalSettings] = useSynced(STORE_KEYS.globalSettings, defaultGlobalSettings, ready);
+  const [payrollRecords, setPayrollRecords] = useSynced(STORE_KEYS.payrollRecords, [], ready);
 
   useEffect(() => {
     (async () => {
-      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb, gset] = await Promise.all([
+      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb, gset, pay] = await Promise.all([
         storageGet(STORE_KEYS.employees), storageGet(STORE_KEYS.departments),
         storageGet(STORE_KEYS.holidays), storageGet(STORE_KEYS.shifts),
         storageGet(STORE_KEYS.bonusTypes), storageGet(STORE_KEYS.gazettes),
@@ -2053,6 +2449,7 @@ export default function App() {
         storageGet(STORE_KEYS.employeeGroups),
         storageGet(STORE_KEYS.probationPeriods),
         storageGet(STORE_KEYS.globalSettings),
+        storageGet(STORE_KEYS.payrollRecords),
       ]);
       const session = sessionGet();
       if (emp) setEmployees(emp);
@@ -2065,6 +2462,7 @@ export default function App() {
       if (grp) setEmployeeGroups(grp);
       if (prb) setProbationPeriods(prb);
       if (gset) setGlobalSettings({ ...defaultGlobalSettings, ...gset });
+      if (pay) setPayrollRecords(pay);
       const finalUsers = usr || seedUsers;
       if (usr) setUsers(usr);
       if (session) {
@@ -2131,6 +2529,8 @@ export default function App() {
             gazettes={gazettes}
             salarySheets={salarySheets}
             setSalarySheets={setSalarySheets}
+            payrollRecords={payrollRecords}
+            setPayrollRecords={setPayrollRecords}
             canEdit={canEdit}
           />
         )}
