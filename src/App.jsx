@@ -10,6 +10,7 @@ import {
   SlidersHorizontal, PenLine, Copy, FileText, FileDown,
   Boxes, Tags, ClipboardList, Truck,
   Percent, FileClock, TimerReset, Gift, Receipt, HandCoins, Landmark, ClipboardCheck, FileBarChart2,
+  TrendingUp, Rocket, History,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import companyLogo from "./assets/company-logo.png";
@@ -226,6 +227,7 @@ const STORE_KEYS = {
   finalSettlements: "hrm2:finalSettlements",
   bankAccounts: "hrm2:bankAccounts",
   payrollSettings: "hrm2:payrollSettings",
+  salaryRevisions: "hrm2:salaryRevisions",
 };
 
 async function storageGet(key) {
@@ -1860,7 +1862,28 @@ function breakupOf(gross, g) {
   };
 }
 
-function SalarySetup({ employees, setEmployees, gazettes, canEdit }) {
+function EmployeeSalarySetup({ employees, setEmployees, gazettes, revisions, setRevisions, canEdit }) {
+  const [tab, setTab] = useState("wise");
+
+  const addRevision = (rec) => setRevisions([{ id: Date.now(), date: new Date().toISOString().slice(0, 10), ...rec }, ...revisions]);
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Btn variant={tab === "wise" ? "navy" : "quiet"} onClick={() => setTab("wise")}><Wallet size={14} /> Employee Wise Salary</Btn>
+        <Btn variant={tab === "history" ? "navy" : "quiet"} onClick={() => setTab("history")}><History size={14} /> Salary Revision History</Btn>
+        <Btn variant={tab === "increment" ? "navy" : "quiet"} onClick={() => setTab("increment")}><TrendingUp size={14} /> Increment</Btn>
+        <Btn variant={tab === "promotion" ? "navy" : "quiet"} onClick={() => setTab("promotion")}><Rocket size={14} /> Promotion Salary Update</Btn>
+      </div>
+      {tab === "wise" && <EmployeeWiseSalary employees={employees} setEmployees={setEmployees} gazettes={gazettes} canEdit={canEdit} addRevision={addRevision} />}
+      {tab === "history" && <SalaryRevisionHistory revisions={revisions} />}
+      {tab === "increment" && <IncrementForm employees={employees} setEmployees={setEmployees} canEdit={canEdit} addRevision={addRevision} />}
+      {tab === "promotion" && <PromotionSalaryUpdate employees={employees} setEmployees={setEmployees} canEdit={canEdit} addRevision={addRevision} />}
+    </div>
+  );
+}
+
+function EmployeeWiseSalary({ employees, setEmployees, gazettes, canEdit, addRevision }) {
   const [q, setQ] = useState("");
   const [edited, setEdited] = useState({});
   const month = currentMonthStr();
@@ -1872,16 +1895,20 @@ function SalarySetup({ employees, setEmployees, gazettes, canEdit }) {
   const save = (id) => {
     const val = edited[id];
     if (val === undefined || val === "") return;
+    const emp = employees.find((e) => e.id === id);
+    const oldSalary = emp?.grossSalary || 0;
     setEmployees(employees.map((e) => (e.id === id ? { ...e, grossSalary: Number(val) } : e)));
+    if (emp && Number(val) !== oldSalary) {
+      addRevision({ employeeId: emp.id, employeeName: emp.name, type: "Manual Update", oldSalary, newSalary: Number(val), note: "Updated from Employee Wise Salary" });
+    }
     const next = { ...edited };
     delete next[id];
     setEdited(next);
   };
 
   return (
-    <div style={{ padding: 24 }}>
     <Panel
-      title={`Employee Salary Setup — ${employees.length} employees`}
+      title={`Employee Wise Salary — ${employees.length} employees`}
       right={<div style={{ fontSize: 11.5, color: T.inkSoft }}>Active formula: <b style={{ color: T.ink }}>{gz ? gz.effect : "none set"}</b></div>}
     >
       <div style={{ marginBottom: 16, maxWidth: 320 }}>
@@ -1936,7 +1963,155 @@ function SalarySetup({ employees, setEmployees, gazettes, canEdit }) {
       </table>
       {!gz && <div style={{ marginTop: 14, fontSize: 12.5, color: T.orange }}>No Gazette formula found — add one under HR Setup → Gazette Calculation so Basic/House Rent/Conveyance/Medical can be computed.</div>}
     </Panel>
-    </div>
+  );
+}
+
+function SalaryRevisionHistory({ revisions }) {
+  const [q, setQ] = useState("");
+  const filtered = revisions.filter((r) => !q || r.employeeName?.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <Panel
+      title={`Salary Revision History — ${filtered.length}`}
+      right={
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <ExportBar
+            title="Salary Revision History"
+            headers={["Date", "Employee", "Type", "Old Salary", "New Salary", "Change", "Note"]}
+            rows={filtered.map((r) => [r.date, r.employeeName, r.type, r.oldSalary || 0, r.newSalary || 0, (r.newSalary || 0) - (r.oldSalary || 0), r.note || ""])}
+            filename="salary-revision-history"
+          />
+          <div style={{ position: "relative", minWidth: 200 }}>
+            <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: T.inkSoft }} />
+            <TInput placeholder="Search employee" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+          </div>
+        </div>
+      }
+    >
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead><tr style={{ textAlign: "left" }}>
+          {["Date", "Employee", "Type", "Old Salary", "New Salary", "Change", "Note"].map((h) => (
+            <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {filtered.map((r) => {
+            const change = (Number(r.newSalary) || 0) - (Number(r.oldSalary) || 0);
+            return (
+              <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "9px 6px", color: T.inkSoft }}>{r.date}</td>
+                <td style={{ padding: "9px 6px", fontWeight: 700 }}>{r.employeeName}</td>
+                <td style={{ padding: "9px 6px" }}><Badge tone={r.type === "Promotion" ? "blue" : r.type === "Increment" ? "green" : "slate"}>{r.type}</Badge></td>
+                <td style={{ padding: "9px 6px" }}>৳ {Number(r.oldSalary || 0).toLocaleString()}</td>
+                <td style={{ padding: "9px 6px", fontWeight: 700 }}>৳ {Number(r.newSalary || 0).toLocaleString()}</td>
+                <td style={{ padding: "9px 6px", color: change >= 0 ? T.green : T.red, fontWeight: 700 }}>{change >= 0 ? "+" : ""}৳ {change.toLocaleString()}</td>
+                <td style={{ padding: "9px 6px", color: T.inkSoft }}>{r.note || "—"}</td>
+              </tr>
+            );
+          })}
+          {filtered.length === 0 && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No salary revisions recorded yet.</td></tr>}
+        </tbody>
+      </table>
+    </Panel>
+  );
+}
+
+function IncrementForm({ employees, setEmployees, canEdit, addRevision }) {
+  const empty = { employeeId: "", mode: "percent", value: "", effectiveDate: "", note: "" };
+  const [form, setForm] = useState(empty);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const emp = employees.find((e) => e.id === form.employeeId);
+  const oldSalary = emp?.grossSalary || 0;
+  const newSalary = form.mode === "percent"
+    ? Math.round(oldSalary + (oldSalary * (Number(form.value) || 0)) / 100)
+    : oldSalary + (Number(form.value) || 0);
+
+  const submit = () => {
+    if (!emp || !form.value) return;
+    setEmployees(employees.map((e) => (e.id === emp.id ? { ...e, grossSalary: newSalary } : e)));
+    addRevision({
+      employeeId: emp.id, employeeName: emp.name, type: "Increment", oldSalary, newSalary,
+      note: `${form.mode === "percent" ? `${form.value}% increment` : `৳${form.value} flat increment`}${form.effectiveDate ? ` — effective ${form.effectiveDate}` : ""}${form.note ? ` — ${form.note}` : ""}`,
+    });
+    setForm(empty);
+  };
+
+  return (
+    <Panel title="Give Increment">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0 16px", maxWidth: 760 }}>
+        <Field label="Employee" required>
+          <TSelect value={form.employeeId} onChange={set("employeeId")}>
+            <option value="">Select employee</option>
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id})</option>)}
+          </TSelect>
+        </Field>
+        <Field label="Increment Type">
+          <TSelect value={form.mode} onChange={set("mode")}>
+            <option value="percent">Percentage (%)</option>
+            <option value="fixed">Fixed Amount (৳)</option>
+          </TSelect>
+        </Field>
+        <Field label={form.mode === "percent" ? "Increment %" : "Increment Amount (৳)"} required>
+          <TInput type="number" value={form.value} onChange={set("value")} placeholder={form.mode === "percent" ? "5" : "1000"} />
+        </Field>
+        <Field label="Effective Date"><TInput type="date" value={form.effectiveDate} onChange={set("effectiveDate")} /></Field>
+        <Field label="Note"><TInput value={form.note} onChange={set("note")} placeholder="e.g. Annual increment" /></Field>
+      </div>
+      {emp && (
+        <div style={{ display: "flex", gap: 20, fontSize: 12.5, color: T.inkSoft, marginBottom: 14 }}>
+          <span>Current Salary: <b style={{ color: T.ink }}>৳ {oldSalary.toLocaleString()}</b></span>
+          <span>New Salary: <b style={{ color: T.green }}>৳ {newSalary.toLocaleString()}</b></span>
+        </div>
+      )}
+      {canEdit && <Btn variant="primary" onClick={submit} disabled={!emp || !form.value}><TrendingUp size={14} /> Apply Increment</Btn>}
+    </Panel>
+  );
+}
+
+function PromotionSalaryUpdate({ employees, setEmployees, canEdit, addRevision }) {
+  const empty = { employeeId: "", newDesignation: "", newSalary: "", effectiveDate: "", note: "" };
+  const [form, setForm] = useState(empty);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const emp = employees.find((e) => e.id === form.employeeId);
+  const oldSalary = emp?.grossSalary || 0;
+
+  const submit = () => {
+    if (!emp || !form.newSalary) return;
+    setEmployees(employees.map((e) => (e.id === emp.id ? { ...e, grossSalary: Number(form.newSalary), designation: form.newDesignation || e.designation } : e)));
+    addRevision({
+      employeeId: emp.id, employeeName: emp.name, type: "Promotion", oldSalary, newSalary: Number(form.newSalary),
+      note: `${form.newDesignation ? `Promoted to ${form.newDesignation}` : "Promotion"}${form.effectiveDate ? ` — effective ${form.effectiveDate}` : ""}${form.note ? ` — ${form.note}` : ""}`,
+    });
+    setForm(empty);
+  };
+
+  return (
+    <Panel title="Promotion Salary Update">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0 16px", maxWidth: 760 }}>
+        <Field label="Employee" required>
+          <TSelect value={form.employeeId} onChange={set("employeeId")}>
+            <option value="">Select employee</option>
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id})</option>)}
+          </TSelect>
+        </Field>
+        <Field label="Current Designation">
+          <TInput value={emp?.designation || ""} readOnly style={{ background: T.canvas }} />
+        </Field>
+        <Field label="New Designation"><TInput value={form.newDesignation} onChange={set("newDesignation")} placeholder="e.g. Senior Officer" /></Field>
+        <Field label="New Gross Salary (৳)" required><TInput type="number" value={form.newSalary} onChange={set("newSalary")} placeholder="15000" /></Field>
+        <Field label="Effective Date"><TInput type="date" value={form.effectiveDate} onChange={set("effectiveDate")} /></Field>
+        <Field label="Note"><TInput value={form.note} onChange={set("note")} placeholder="e.g. Promotion board — Jul 2026" /></Field>
+      </div>
+      {emp && (
+        <div style={{ display: "flex", gap: 20, fontSize: 12.5, color: T.inkSoft, marginBottom: 14 }}>
+          <span>Current Salary: <b style={{ color: T.ink }}>৳ {oldSalary.toLocaleString()}</b></span>
+          {form.newSalary && <span>New Salary: <b style={{ color: T.green }}>৳ {Number(form.newSalary).toLocaleString()}</b></span>}
+        </div>
+      )}
+      {canEdit && <Btn variant="primary" onClick={submit} disabled={!emp || !form.newSalary}><Rocket size={14} /> Apply Promotion</Btn>}
+    </Panel>
   );
 }
 
@@ -3404,10 +3579,11 @@ export default function App() {
   const [finalSettlements, setFinalSettlements] = useSynced(STORE_KEYS.finalSettlements, [], ready);
   const [bankAccounts, setBankAccounts] = useSynced(STORE_KEYS.bankAccounts, {}, ready);
   const [payrollSettings, setPayrollSettings] = useSynced(STORE_KEYS.payrollSettings, defaultPayrollSettings, ready);
+  const [salaryRevisions, setSalaryRevisions] = useSynced(STORE_KEYS.salaryRevisions, [], ready);
 
   useEffect(() => {
     (async () => {
-      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb, gset, pay, acat, ast, logi, sstr, ot, alw, ded, pbon, lns, fset, bacc, pset] = await Promise.all([
+      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb, gset, pay, acat, ast, logi, sstr, ot, alw, ded, pbon, lns, fset, bacc, pset, srev] = await Promise.all([
         storageGet(STORE_KEYS.employees), storageGet(STORE_KEYS.departments),
         storageGet(STORE_KEYS.holidays), storageGet(STORE_KEYS.shifts),
         storageGet(STORE_KEYS.bonusTypes), storageGet(STORE_KEYS.gazettes),
@@ -3429,6 +3605,7 @@ export default function App() {
         storageGet(STORE_KEYS.finalSettlements),
         storageGet(STORE_KEYS.bankAccounts),
         storageGet(STORE_KEYS.payrollSettings),
+        storageGet(STORE_KEYS.salaryRevisions),
       ]);
       const session = sessionGet();
       if (emp) setEmployees(emp);
@@ -3454,6 +3631,7 @@ export default function App() {
       if (fset) setFinalSettlements(fset);
       if (bacc) setBankAccounts(bacc);
       if (pset) setPayrollSettings({ ...defaultPayrollSettings, ...pset });
+      if (srev) setSalaryRevisions(srev);
       const finalUsers = usr || seedUsers;
       if (usr) setUsers(usr);
       if (session) {
@@ -3514,7 +3692,7 @@ export default function App() {
         {safeView === "group" && <EmployeeGroups groups={employeeGroups} setGroups={setEmployeeGroups} />}
         {safeView === "probation" && <ProbationPeriod periods={probationPeriods} setPeriods={setProbationPeriods} />}
         {safeView === "salarystructure" && <SalaryStructure structures={salaryStructures} setStructures={setSalaryStructures} canEdit={canEdit} />}
-        {safeView === "salarysetup" && <SalarySetup employees={employees} setEmployees={setEmployees} gazettes={gazettes} canEdit={canEdit} />}
+        {safeView === "salarysetup" && <EmployeeSalarySetup employees={employees} setEmployees={setEmployees} gazettes={gazettes} revisions={salaryRevisions} setRevisions={setSalaryRevisions} canEdit={canEdit} />}
         {safeView === "attendanceintegration" && <AttendanceIntegration employees={employees} settings={payrollSettings} setSettings={setPayrollSettings} canEdit={canEdit} />}
         {safeView === "overtime" && <Overtime employees={employees} records={overtimeRecords} setRecords={setOvertimeRecords} canEdit={canEdit} otRateMultiplier={payrollSettings.otRateMultiplier} />}
         {safeView === "allowance" && <Allowance employees={employees} records={allowances} setRecords={setAllowances} canEdit={canEdit} />}
