@@ -8,6 +8,8 @@ import {
   Bell, UserPlus, Eye, KeyRound, Lock, LogOut, Loader2, Settings, Layers,
   Factory, UserCog, FileSpreadsheet, ChevronsRight, Wallet, Printer, RefreshCcw,
   SlidersHorizontal, PenLine, Copy, FileText, FileDown,
+  Boxes, Tags, ClipboardList, Truck,
+  Percent, FileClock, TimerReset, Gift, Receipt, HandCoins, Landmark, ClipboardCheck, FileBarChart2,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import companyLogo from "./assets/company-logo.png";
@@ -151,9 +153,20 @@ const defaultGlobalSettings = {
 };
 
 const ROLE_PERMS = {
-  Admin: ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Gazette", "Salary", "User Access", "Employee Group", "Probation Period", "Global Setting"],
-  "HR Manager": ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Salary", "Employee Group", "Probation Period"],
+  Admin: ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Gazette", "Payroll", "User Access", "Employee Group", "Probation Period", "Global Setting", "Assets Category", "Asset List", "Logistic Support"],
+  "HR Manager": ["Dashboard", "Employees", "Departments", "Holidays", "Shifts", "Bonus", "Payroll", "Employee Group", "Probation Period", "Asset List", "Logistic Support"],
   Viewer: ["Dashboard", "Employees"],
+};
+
+/* Payroll Settings — defaults for the Payroll module's own settings page. */
+const defaultPayrollSettings = {
+  workingDaysPerMonth: 26,
+  otRateMultiplier: 2,
+  weeklyHours: 48,
+  roundNetPay: true,
+  autoAttendanceIntegration: true,
+  bankAdviceNote: "Please credit the salary of the below-mentioned employees to their respective bank accounts.",
+  payslipFooterNote: "This is a computer generated payslip and does not require a signature.",
 };
 
 const seedUsers = [
@@ -201,6 +214,18 @@ const STORE_KEYS = {
   probationPeriods: "hrm2:probationPeriods",
   globalSettings: "hrm2:globalSettings",
   payrollRecords: "hrm2:payrollRecords",
+  assetCategories: "hrm2:assetCategories",
+  assets: "hrm2:assets",
+  logisticSupport: "hrm2:logisticSupport",
+  salaryStructures: "hrm2:salaryStructures",
+  overtimeRecords: "hrm2:overtimeRecords",
+  allowances: "hrm2:allowances",
+  deductions: "hrm2:deductions",
+  payrollBonuses: "hrm2:payrollBonuses",
+  loans: "hrm2:loans",
+  finalSettlements: "hrm2:finalSettlements",
+  bankAccounts: "hrm2:bankAccounts",
+  payrollSettings: "hrm2:payrollSettings",
 };
 
 async function storageGet(key) {
@@ -533,7 +558,33 @@ const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutGrid, perm: "Dashboard" },
   { key: "globalsettings", label: "Global Setting", icon: SlidersHorizontal, perm: "Global Setting" },
   { key: "employees", label: "Employees", icon: Users, perm: "Employees" },
-  { key: "salary", label: "Salary", icon: Wallet, perm: "Salary" },
+  {
+    key: "payroll", label: "Payroll", icon: Wallet, group: true,
+    children: [
+      { key: "salarystructure", label: "Salary Structure", icon: Percent, perm: "Payroll" },
+      { key: "salarysetup", label: "Employee Salary Setup", icon: Wallet, perm: "Payroll" },
+      { key: "attendanceintegration", label: "Attendance Integration", icon: FileClock, perm: "Payroll" },
+      { key: "overtime", label: "Overtime", icon: TimerReset, perm: "Payroll" },
+      { key: "allowance", label: "Allowance", icon: Gift, perm: "Payroll" },
+      { key: "deduction", label: "Deduction", icon: Receipt, perm: "Payroll" },
+      { key: "payrollbonus", label: "Bonus", icon: Award, perm: "Payroll" },
+      { key: "loanadvance", label: "Loan & Advance", icon: HandCoins, perm: "Payroll" },
+      { key: "monthlypayroll", label: "Monthly Payroll", icon: FileSpreadsheet, perm: "Payroll" },
+      { key: "payslip", label: "Payslip", icon: Printer, perm: "Payroll" },
+      { key: "bankadvice", label: "Bank Advice", icon: Landmark, perm: "Payroll" },
+      { key: "finalsettlement", label: "Final Settlement", icon: ClipboardCheck, perm: "Payroll" },
+      { key: "payrollreports", label: "Payroll Reports", icon: FileBarChart2, perm: "Payroll" },
+      { key: "payrollsettings", label: "Payroll Settings", icon: Settings, perm: "Payroll" },
+    ],
+  },
+  {
+    key: "assets", label: "Assets", icon: Boxes, group: true,
+    children: [
+      { key: "assetcategory", label: "Assets Category", icon: Tags, perm: "Assets Category" },
+      { key: "assetlist", label: "Asset List", icon: ClipboardList, perm: "Asset List" },
+      { key: "logisticsupport", label: "Logistic Support", icon: Truck, perm: "Logistic Support" },
+    ],
+  },
   {
     key: "hrsetup", label: "HR Setup", icon: Settings, group: true,
     children: [
@@ -550,7 +601,7 @@ const NAV = [
 ];
 
 function Sidebar({ view, setView, allowed }) {
-  const [openGroup, setOpenGroup] = useState("hrsetup");
+  const [openGroup, setOpenGroup] = useState("payroll");
   return (
     <div style={{ width: 232, background: T.navy, color: "#fff", flexShrink: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 10 }}>
@@ -1809,22 +1860,6 @@ function breakupOf(gross, g) {
   };
 }
 
-function Salary({ employees, setEmployees, gazettes, salarySheets, setSalarySheets, payrollRecords, setPayrollRecords, canEdit }) {
-  const [tab, setTab] = useState("setup");
-  return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn variant={tab === "setup" ? "navy" : "quiet"} onClick={() => setTab("setup")}><Wallet size={14} /> Salary Setup</Btn>
-        <Btn variant={tab === "sheet" ? "navy" : "quiet"} onClick={() => setTab("sheet")}><FileSpreadsheet size={14} /> Monthly Salary Sheet</Btn>
-        <Btn variant={tab === "payroll" ? "navy" : "quiet"} onClick={() => setTab("payroll")}><Printer size={14} /> Payroll List</Btn>
-      </div>
-      {tab === "setup" && <SalarySetup employees={employees} setEmployees={setEmployees} gazettes={gazettes} canEdit={canEdit} />}
-      {tab === "sheet" && <SalarySheet employees={employees} gazettes={gazettes} salarySheets={salarySheets} setSalarySheets={setSalarySheets} canEdit={canEdit} />}
-      {tab === "payroll" && <PayrollList employees={employees} gazettes={gazettes} records={payrollRecords} setRecords={setPayrollRecords} canEdit={canEdit} />}
-    </div>
-  );
-}
-
 function SalarySetup({ employees, setEmployees, gazettes, canEdit }) {
   const [q, setQ] = useState("");
   const [edited, setEdited] = useState({});
@@ -1844,8 +1879,9 @@ function SalarySetup({ employees, setEmployees, gazettes, canEdit }) {
   };
 
   return (
+    <div style={{ padding: 24 }}>
     <Panel
-      title={`Salary Setup — ${employees.length} employees`}
+      title={`Employee Salary Setup — ${employees.length} employees`}
       right={<div style={{ fontSize: 11.5, color: T.inkSoft }}>Active formula: <b style={{ color: T.ink }}>{gz ? gz.effect : "none set"}</b></div>}
     >
       <div style={{ marginBottom: 16, maxWidth: 320 }}>
@@ -1900,6 +1936,7 @@ function SalarySetup({ employees, setEmployees, gazettes, canEdit }) {
       </table>
       {!gz && <div style={{ marginTop: 14, fontSize: 12.5, color: T.orange }}>No Gazette formula found — add one under HR Setup → Gazette Calculation so Basic/House Rent/Conveyance/Medical can be computed.</div>}
     </Panel>
+    </div>
   );
 }
 
@@ -1946,8 +1983,9 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
   const viewEmp = viewing ? rowsWithCalc.find((r) => r.id === viewing) : null;
 
   return (
+    <div style={{ padding: 24 }}>
     <Panel
-      title="Monthly Salary Sheet"
+      title="Monthly Payroll — Salary Sheet"
       right={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <TSelect value={company} onChange={(e) => setCompany(e.target.value)} style={{ width: 200 }}>
@@ -2043,6 +2081,7 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
         </>
       )}
     </Panel>
+    </div>
   );
 }
 
@@ -2234,18 +2273,19 @@ function PayrollList({ employees, gazettes, records, setRecords, canEdit }) {
   const payslipEmployee = payslipFor ? employees.find((e) => e.id === payslipFor.employeeId) : null;
 
   return (
+    <div style={{ padding: 24 }}>
     <Panel
-      title="Payroll List"
+      title="Payslip Register"
       right={canEdit && (
-        <Btn variant="primary" small onClick={() => { setModalRecord(null); setShowModal(true); }}><Plus size={13} /> Generate Payroll</Btn>
+        <Btn variant="primary" small onClick={() => { setModalRecord(null); setShowModal(true); }}><Plus size={13} /> Generate Payslip</Btn>
       )}
     >
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
         <ExportBar
-          title="Payroll List"
+          title="Payslip Register"
           headers={["PIN", "Employee", "Month", "Salary", "Loan", "Hours", "Deduction", "Total Paid", "Pay Date", "Status"]}
           rows={filtered.map((r) => [r.employeeId, r.employeeName, r.month, r.basicSalary || 0, r.loan || 0, r.hoursWorked || "", r.deduction || 0, r.finalSalary || 0, r.payDate || "", r.status])}
-          filename="payroll-list"
+          filename="payslip-register"
         />
         <div style={{ position: "relative", minWidth: 220 }}>
           <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: T.inkSoft }} />
@@ -2281,7 +2321,7 @@ function PayrollList({ employees, gazettes, records, setRecords, canEdit }) {
             </tr>
           ))}
           {filtered.length === 0 && (
-            <tr><td colSpan={11} style={{ padding: 24, textAlign: "center", color: T.inkSoft }}>No payroll entries yet — click <b>Generate Payroll</b> to add one.</td></tr>
+            <tr><td colSpan={11} style={{ padding: 24, textAlign: "center", color: T.inkSoft }}>No payslips yet — click <b>Generate Payslip</b> to add one.</td></tr>
           )}
         </tbody>
       </table>
@@ -2298,6 +2338,905 @@ function PayrollList({ employees, gazettes, records, setRecords, canEdit }) {
         <PayslipInvoice record={payslipFor} employee={payslipEmployee} gazettes={gazettes} onClose={() => setPayslipFor(null)} />
       )}
     </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Salary Structure — grade/designation-wise pay structure templates  */
+/* ------------------------------------------------------------------ */
+const SALARY_STRUCTURE_AMOUNT_FIELDS = ["basic", "houseRent", "medical", "conveyance", "food", "special"];
+
+function SalaryStructure({ structures, setStructures, canEdit }) {
+  const empty = { grade: "", basic: "", houseRent: "", medical: "", conveyance: "", food: "", special: "" };
+  const [form, setForm] = useState(empty);
+  const [editingId, setEditingId] = useState(null);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const grossOf = (obj) => SALARY_STRUCTURE_AMOUNT_FIELDS.reduce((s, k) => s + (Number(obj[k]) || 0), 0);
+  const gross = grossOf(form);
+
+  const submit = () => {
+    if (!form.grade.trim()) return;
+    const rec = { id: editingId || Date.now(), ...form };
+    setStructures(editingId ? structures.map((s) => (s.id === editingId ? rec : s)) : [rec, ...structures]);
+    setForm(empty);
+    setEditingId(null);
+  };
+  const edit = (s) => { setForm({ ...s }); setEditingId(s.id); };
+  const remove = (id) => { setStructures(structures.filter((s) => s.id !== id)); if (editingId === id) { setEditingId(null); setForm(empty); } };
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      {canEdit && (
+        <Panel title={editingId ? "Edit Salary Structure" : "New Salary Structure"}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0 16px" }}>
+            <Field label="Salary Grade" required><TInput value={form.grade} onChange={set("grade")} placeholder="e.g. Grade A — Officer" /></Field>
+            <Field label="Basic Salary (৳)"><TInput type="number" value={form.basic} onChange={set("basic")} placeholder="10000" /></Field>
+            <Field label="House Rent (৳)"><TInput type="number" value={form.houseRent} onChange={set("houseRent")} placeholder="6000" /></Field>
+            <Field label="Medical Allowance (৳)"><TInput type="number" value={form.medical} onChange={set("medical")} placeholder="1000" /></Field>
+            <Field label="Conveyance (৳)"><TInput type="number" value={form.conveyance} onChange={set("conveyance")} placeholder="1000" /></Field>
+            <Field label="Food Allowance (৳)"><TInput type="number" value={form.food} onChange={set("food")} placeholder="0" /></Field>
+            <Field label="Special Allowance (৳)"><TInput type="number" value={form.special} onChange={set("special")} placeholder="0" /></Field>
+          </div>
+          <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 12 }}>Gross Salary: <b style={{ color: T.green }}>৳ {gross.toLocaleString()}</b></div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="primary" onClick={submit}><Plus size={14} /> {editingId ? "Update" : "Save"} Structure</Btn>
+            {editingId && <Btn variant="quiet" onClick={() => { setEditingId(null); setForm(empty); }}>Cancel</Btn>}
+          </div>
+        </Panel>
+      )}
+      <Panel
+        title={`Salary Structures — ${structures.length}`}
+        right={<ExportBar title="Salary Structures" headers={["Salary Grade", "Basic Salary", "House Rent", "Medical Allowance", "Conveyance", "Food Allowance", "Special Allowance", "Gross Salary"]} rows={structures.map((s) => [s.grade, s.basic || 0, s.houseRent || 0, s.medical || 0, s.conveyance || 0, s.food || 0, s.special || 0, grossOf(s)])} filename="salary-structures" />}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Salary Grade", "Basic Salary", "House Rent", "Medical Allowance", "Conveyance", "Food Allowance", "Special Allowance", "Gross Salary", ""].map((h) => (
+              <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {structures.map((s) => {
+              const t = grossOf(s);
+              return (
+                <tr key={s.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                  <td style={{ padding: "10px 6px", fontWeight: 700 }}>{s.grade}</td>
+                  <td style={{ padding: "10px 6px" }}>{(Number(s.basic) || 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 6px" }}>{(Number(s.houseRent) || 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 6px" }}>{(Number(s.medical) || 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 6px" }}>{(Number(s.conveyance) || 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 6px" }}>{(Number(s.food) || 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 6px" }}>{(Number(s.special) || 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 6px", fontWeight: 700, color: T.green }}>৳ {t.toLocaleString()}</td>
+                  <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    {canEdit && <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => edit(s)} />}
+                    {canEdit && <IconBtn icon={Trash2} tone={T.red} title="Remove" onClick={() => remove(s.id)} />}
+                  </td>
+                </tr>
+              );
+            })}
+            {structures.length === 0 && <tr><td colSpan={9} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No salary structures defined yet.</td></tr>}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Attendance Integration — how attendance feeds into payroll         */
+/* ------------------------------------------------------------------ */
+function AttendanceIntegration({ employees, settings, setSettings, canEdit }) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+
+  const companyRows = COMPANIES.map((c) => {
+    const list = employees.filter((e) => e.company === c.key);
+    const present = Math.round(list.length * 0.92);
+    return { ...c, total: list.length, present, absent: list.length - present };
+  });
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <Panel
+        title="Attendance → Payroll Integration"
+        right={canEdit && <Btn variant="primary" small onClick={() => setSettings(form)} disabled={!dirty}><Check size={13} /> Save</Btn>}
+      >
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 14, lineHeight: 1.6 }}>
+          Present/absent days recorded against each employee feed directly into <b>Monthly Payroll</b> as the attendance ratio used to prorate gross pay.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", maxWidth: 640 }}>
+          <Field label="Working Days per Month"><TInput type="number" value={form.workingDaysPerMonth} onChange={(e) => setForm({ ...form, workingDaysPerMonth: e.target.value })} /></Field>
+          <Field label="Standard Weekly Hours"><TInput type="number" value={form.weeklyHours} onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })} /></Field>
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Auto-pull Attendance for Payroll</div>
+        <YesNoRow value={form.autoAttendanceIntegration} onChange={(v) => setForm({ ...form, autoAttendanceIntegration: v })} />
+      </Panel>
+      <Panel title="Company-wise Attendance Summary — Current Cycle">
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Company", "Total Employee", "Present", "Absent", "Attendance %"].map((h) => (
+              <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {companyRows.map((c) => (
+              <tr key={c.key} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "10px 6px", fontWeight: 700 }}>{c.short}</td>
+                <td style={{ padding: "10px 6px" }}>{c.total}</td>
+                <td style={{ padding: "10px 6px", color: T.green }}>{c.present}</td>
+                <td style={{ padding: "10px 6px", color: T.red }}>{c.absent}</td>
+                <td style={{ padding: "10px 6px" }}>{c.total ? Math.round((c.present / c.total) * 100) : 0}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Generic ledger module — shared by Overtime, Allowance, Deduction,  */
+/*  Bonus and Loan & Advance. Each employee/month record carries a     */
+/*  small set of custom fields plus an amount and a status.            */
+/* ------------------------------------------------------------------ */
+function LedgerModule({
+  title, employees, records, setRecords, canEdit, fields,
+  computeAmount, amountLabel = "Amount", statusOptions = ["Pending", "Approved", "Paid"], exportName,
+}) {
+  const [q, setQ] = useState("");
+  const emptyForm = () => {
+    const f = { employeeId: "", month: currentMonthStr(), status: statusOptions[0] };
+    fields.forEach((fl) => (f[fl.key] = ""));
+    if (!computeAmount) f.amount = "";
+    return f;
+  };
+  const [form, setForm] = useState(emptyForm());
+  const [editingId, setEditingId] = useState(null);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const liveAmount = computeAmount ? computeAmount(form) : Number(form.amount) || 0;
+
+  const filtered = records.filter((r) => !q || r.employeeName?.toLowerCase().includes(q.toLowerCase()) || r.employeeId?.toLowerCase?.().includes(q.toLowerCase()));
+
+  const submit = () => {
+    if (!form.employeeId) return;
+    const emp = employees.find((e) => e.id === form.employeeId);
+    const rec = { ...form, id: editingId || Date.now(), employeeId: emp.id, employeeName: emp.name, amount: liveAmount };
+    setRecords(editingId ? records.map((r) => (r.id === editingId ? rec : r)) : [rec, ...records]);
+    setForm(emptyForm());
+    setEditingId(null);
+  };
+  const edit = (r) => { setForm({ ...r }); setEditingId(r.id); };
+  const remove = (id) => { setRecords(records.filter((r) => r.id !== id)); if (editingId === id) { setEditingId(null); setForm(emptyForm()); } };
+
+  const fieldCols = fields.map((f) => f.label);
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      {canEdit && (
+        <Panel title={editingId ? `Edit ${title} Entry` : `New ${title} Entry`}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0 16px" }}>
+            <Field label="Employee" required>
+              <TSelect value={form.employeeId} onChange={set("employeeId")}>
+                <option value="">Select employee</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id})</option>)}
+              </TSelect>
+            </Field>
+            <Field label="Month"><TInput type="month" value={form.month} onChange={set("month")} /></Field>
+            {fields.map((fl) => (
+              <Field key={fl.key} label={fl.label}>
+                {fl.type === "select" ? (
+                  <TSelect value={form[fl.key] || ""} onChange={set(fl.key)}>
+                    <option value="">Select</option>
+                    {fl.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </TSelect>
+                ) : (
+                  <TInput type={fl.type || "text"} value={form[fl.key] || ""} onChange={set(fl.key)} placeholder={fl.placeholder} />
+                )}
+              </Field>
+            ))}
+            {!computeAmount && <Field label={amountLabel}><TInput type="number" value={form.amount || ""} onChange={set("amount")} /></Field>}
+            <Field label="Status">
+              <TSelect value={form.status} onChange={set("status")}>
+                {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </TSelect>
+            </Field>
+          </div>
+          {computeAmount && (
+            <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 12 }}>
+              Computed {amountLabel}: <b style={{ color: T.green }}>৳ {liveAmount.toLocaleString()}</b>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="primary" onClick={submit} disabled={!form.employeeId}><Plus size={14} /> {editingId ? "Update" : "Save"}</Btn>
+            {editingId && <Btn variant="quiet" onClick={() => { setEditingId(null); setForm(emptyForm()); }}>Cancel</Btn>}
+          </div>
+        </Panel>
+      )}
+      <Panel
+        title={`${title} — ${filtered.length}`}
+        right={
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <ExportBar
+              title={title}
+              headers={["Employee", "Month", ...fieldCols, amountLabel, "Status"]}
+              rows={filtered.map((r) => [r.employeeName, r.month, ...fields.map((fl) => r[fl.key] ?? ""), r.amount || 0, r.status])}
+              filename={exportName}
+            />
+            <div style={{ position: "relative", minWidth: 200 }}>
+              <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: T.inkSoft }} />
+              <TInput placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+            </div>
+          </div>
+        }
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Employee", "Month", ...fieldCols, amountLabel, "Status", canEdit ? "" : null].filter((x) => x !== null).map((h) => (
+              <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {filtered.map((r) => (
+              <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "9px 6px", fontWeight: 700 }}>{r.employeeName}</td>
+                <td style={{ padding: "9px 6px" }}>{r.month}</td>
+                {fields.map((fl) => <td key={fl.key} style={{ padding: "9px 6px" }}>{r[fl.key] ?? "—"}</td>)}
+                <td style={{ padding: "9px 6px", fontWeight: 700, color: T.green }}>৳ {Number(r.amount || 0).toLocaleString()}</td>
+                <td style={{ padding: "9px 6px" }}><Badge tone={r.status === "Paid" || r.status === "Approved" || r.status === "Closed" ? "green" : r.status === "Rejected" ? "red" : "orange"}>{r.status}</Badge></td>
+                {canEdit && (
+                  <td style={{ padding: "9px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => edit(r)} />
+                    <IconBtn icon={Trash2} tone={T.red} title="Remove" onClick={() => remove(r.id)} />
+                  </td>
+                )}
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={fieldCols.length + (canEdit ? 5 : 4)} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No {title.toLowerCase()} entries yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+function Overtime({ employees, records, setRecords, canEdit, otRateMultiplier }) {
+  return (
+    <LedgerModule
+      title="Overtime"
+      employees={employees}
+      records={records}
+      setRecords={setRecords}
+      canEdit={canEdit}
+      exportName="overtime"
+      statusOptions={["Pending", "Approved", "Paid"]}
+      fields={[
+        { key: "hours", label: "OT Hours", type: "number", placeholder: "10" },
+        { key: "rate", label: "Rate / Hour (৳)", type: "number", placeholder: "50" },
+      ]}
+      computeAmount={(f) => (Number(f.hours) || 0) * (Number(f.rate) || 0) * (Number(otRateMultiplier) || 1)}
+    />
+  );
+}
+
+function Allowance({ employees, records, setRecords, canEdit }) {
+  return (
+    <LedgerModule
+      title="Allowance"
+      employees={employees}
+      records={records}
+      setRecords={setRecords}
+      canEdit={canEdit}
+      exportName="allowances"
+      statusOptions={["Pending", "Approved", "Paid"]}
+      fields={[
+        { key: "type", label: "Allowance Type", type: "select", options: ["Transport", "Food", "Housing", "Mobile", "Special", "Others"] },
+      ]}
+    />
+  );
+}
+
+function Deduction({ employees, records, setRecords, canEdit }) {
+  return (
+    <LedgerModule
+      title="Deduction"
+      employees={employees}
+      records={records}
+      setRecords={setRecords}
+      canEdit={canEdit}
+      exportName="deductions"
+      statusOptions={["Pending", "Applied"]}
+      fields={[
+        { key: "type", label: "Deduction Type", type: "select", options: ["Absence", "Late Fine", "Provident Fund", "Tax", "Damage/Loss", "Others"] },
+      ]}
+    />
+  );
+}
+
+function PayrollBonus({ employees, bonusTypes, records, setRecords, canEdit }) {
+  return (
+    <LedgerModule
+      title="Bonus"
+      employees={employees}
+      records={records}
+      setRecords={setRecords}
+      canEdit={canEdit}
+      exportName="payroll-bonus"
+      statusOptions={["Pending", "Approved", "Paid"]}
+      fields={[
+        { key: "type", label: "Bonus Type", type: "select", options: bonusTypes.length ? bonusTypes.map((b) => b.type) : ["Festival Bonus", "Attendance Bonus"] },
+      ]}
+    />
+  );
+}
+
+function LoanAdvance({ employees, records, setRecords, canEdit }) {
+  return (
+    <LedgerModule
+      title="Loan & Advance"
+      employees={employees}
+      records={records}
+      setRecords={setRecords}
+      canEdit={canEdit}
+      exportName="loan-advance"
+      statusOptions={["Active", "Closed"]}
+      fields={[
+        { key: "type", label: "Type", type: "select", options: ["Loan", "Advance"] },
+        { key: "installments", label: "Installments", type: "number", placeholder: "6" },
+      ]}
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bank Advice — bank transfer instruction sheet for a company/month  */
+/* ------------------------------------------------------------------ */
+function BankAdvice({ employees, bankAccounts, setBankAccounts, payrollSettings }) {
+  const [company, setCompany] = useState(COMPANIES[0].key);
+  const [month, setMonth] = useState(currentMonthStr());
+
+  const list = employees.filter((e) => e.company === company);
+  const setAccount = (id, field, val) => {
+    const cur = bankAccounts[id] || {};
+    setBankAccounts({ ...bankAccounts, [id]: { ...cur, [field]: val } });
+  };
+
+  const rows = list.map((e) => {
+    const acc = bankAccounts[e.id] || {};
+    return { id: e.id, name: e.name, designation: e.designation, bankName: acc.bankName || "", accountNo: acc.accountNo || "", branch: acc.branch || "", amount: e.grossSalary || 0 };
+  });
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <Panel
+        title="Bank Advice"
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <TSelect value={company} onChange={(e) => setCompany(e.target.value)} style={{ width: 200 }}>
+              {COMPANIES.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+            </TSelect>
+            <TInput type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 150 }} />
+          </div>
+        }
+      >
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 14 }}>{payrollSettings.bankAdviceNote}</div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <ExportBar
+            title="Bank Advice"
+            headers={["ID", "Name", "Designation", "Bank Name", "Account No", "Branch", "Amount"]}
+            rows={rows.map((r) => [r.id, r.name, r.designation, r.bankName, r.accountNo, r.branch, r.amount])}
+            filename={`bank-advice-${company}-${month}`}
+          />
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["ID", "Name", "Designation", "Bank Name", "Account No", "Branch", "Amount"].map((h) => (
+              <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "9px 6px", color: T.inkSoft }}>{r.id}</td>
+                <td style={{ padding: "9px 6px", fontWeight: 700 }}>{r.name}</td>
+                <td style={{ padding: "9px 6px" }}>{r.designation}</td>
+                <td style={{ padding: "9px 6px" }}><TInput value={r.bankName} onChange={(e) => setAccount(r.id, "bankName", e.target.value)} placeholder="Bank name" style={{ width: 120, padding: "5px 8px" }} /></td>
+                <td style={{ padding: "9px 6px" }}><TInput value={r.accountNo} onChange={(e) => setAccount(r.id, "accountNo", e.target.value)} placeholder="Account no." style={{ width: 130, padding: "5px 8px" }} /></td>
+                <td style={{ padding: "9px 6px" }}><TInput value={r.branch} onChange={(e) => setAccount(r.id, "branch", e.target.value)} placeholder="Branch" style={{ width: 110, padding: "5px 8px" }} /></td>
+                <td style={{ padding: "9px 6px", fontWeight: 700, color: T.green }}>৳ {Number(r.amount).toLocaleString()}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No employees found for this company.</td></tr>}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: `2px solid ${T.ink}` }}>
+                <td colSpan={6} style={{ padding: "10px 6px", fontWeight: 700 }}>Total</td>
+                <td style={{ padding: "10px 6px", fontWeight: 700, color: T.green }}>৳ {total.toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Final Settlement — dues/deductions on separation                   */
+/* ------------------------------------------------------------------ */
+function FinalSettlement({ employees, records, setRecords, canEdit }) {
+  const empty = { employeeId: "", lastWorkingDate: "", unpaidSalary: "", leaveEncashment: "", otherDues: "", loanOutstanding: "", otherDeduction: "", status: "Pending" };
+  const [form, setForm] = useState(empty);
+  const [editingId, setEditingId] = useState(null);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const netPayable = (Number(form.unpaidSalary) || 0) + (Number(form.leaveEncashment) || 0) + (Number(form.otherDues) || 0)
+    - (Number(form.loanOutstanding) || 0) - (Number(form.otherDeduction) || 0);
+
+  const submit = () => {
+    if (!form.employeeId) return;
+    const emp = employees.find((e) => e.id === form.employeeId);
+    const rec = { ...form, id: editingId || Date.now(), employeeId: emp.id, employeeName: emp.name, netPayable };
+    setRecords(editingId ? records.map((r) => (r.id === editingId ? rec : r)) : [rec, ...records]);
+    setForm(empty);
+    setEditingId(null);
+  };
+  const edit = (r) => { setForm({ ...r }); setEditingId(r.id); };
+  const remove = (id) => { setRecords(records.filter((r) => r.id !== id)); if (editingId === id) { setEditingId(null); setForm(empty); } };
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      {canEdit && (
+        <Panel title={editingId ? "Edit Final Settlement" : "New Final Settlement"}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0 16px" }}>
+            <Field label="Employee" required>
+              <TSelect value={form.employeeId} onChange={set("employeeId")}>
+                <option value="">Select employee</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id})</option>)}
+              </TSelect>
+            </Field>
+            <Field label="Last Working Date"><TInput type="date" value={form.lastWorkingDate} onChange={set("lastWorkingDate")} /></Field>
+            <Field label="Status">
+              <TSelect value={form.status} onChange={set("status")}>
+                <option value="Pending">Pending</option>
+                <option value="Settled">Settled</option>
+              </TSelect>
+            </Field>
+            <Field label="Unpaid Salary (৳)"><TInput type="number" value={form.unpaidSalary} onChange={set("unpaidSalary")} /></Field>
+            <Field label="Leave Encashment (৳)"><TInput type="number" value={form.leaveEncashment} onChange={set("leaveEncashment")} /></Field>
+            <Field label="Other Dues (৳)"><TInput type="number" value={form.otherDues} onChange={set("otherDues")} /></Field>
+            <Field label="Loan Outstanding (৳)"><TInput type="number" value={form.loanOutstanding} onChange={set("loanOutstanding")} /></Field>
+            <Field label="Other Deduction (৳)"><TInput type="number" value={form.otherDeduction} onChange={set("otherDeduction")} /></Field>
+          </div>
+          <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 12 }}>Net Payable: <b style={{ color: T.green }}>৳ {netPayable.toLocaleString()}</b></div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="primary" onClick={submit} disabled={!form.employeeId}><Plus size={14} /> {editingId ? "Update" : "Save"}</Btn>
+            {editingId && <Btn variant="quiet" onClick={() => { setEditingId(null); setForm(empty); }}>Cancel</Btn>}
+          </div>
+        </Panel>
+      )}
+      <Panel
+        title={`Final Settlements — ${records.length}`}
+        right={<ExportBar title="Final Settlements" headers={["Employee", "Last Working Date", "Unpaid Salary", "Leave Encashment", "Other Dues", "Loan Outstanding", "Other Deduction", "Net Payable", "Status"]} rows={records.map((r) => [r.employeeName, r.lastWorkingDate, r.unpaidSalary || 0, r.leaveEncashment || 0, r.otherDues || 0, r.loanOutstanding || 0, r.otherDeduction || 0, r.netPayable || 0, r.status])} filename="final-settlements" />}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Employee", "Last Working Date", "Dues", "Deductions", "Net Payable", "Status", canEdit ? "" : null].filter((x) => x !== null).map((h) => (
+              <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {records.map((r) => {
+              const dues = (Number(r.unpaidSalary) || 0) + (Number(r.leaveEncashment) || 0) + (Number(r.otherDues) || 0);
+              const ded = (Number(r.loanOutstanding) || 0) + (Number(r.otherDeduction) || 0);
+              return (
+                <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                  <td style={{ padding: "9px 6px", fontWeight: 700 }}>{r.employeeName}</td>
+                  <td style={{ padding: "9px 6px" }}>{r.lastWorkingDate || "—"}</td>
+                  <td style={{ padding: "9px 6px" }}>৳ {dues.toLocaleString()}</td>
+                  <td style={{ padding: "9px 6px" }}>৳ {ded.toLocaleString()}</td>
+                  <td style={{ padding: "9px 6px", fontWeight: 700, color: T.green }}>৳ {Number(r.netPayable || 0).toLocaleString()}</td>
+                  <td style={{ padding: "9px 6px" }}><Badge tone={r.status === "Settled" ? "green" : "orange"}>{r.status}</Badge></td>
+                  {canEdit && (
+                    <td style={{ padding: "9px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => edit(r)} />
+                      <IconBtn icon={Trash2} tone={T.red} title="Remove" onClick={() => remove(r.id)} />
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+            {records.length === 0 && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No final settlements recorded yet.</td></tr>}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Payroll Reports — summary reports across the payroll sub-modules   */
+/* ------------------------------------------------------------------ */
+function PayrollReports({ payrollRecords, overtimeRecords, allowances, deductions, payrollBonuses, loans, finalSettlements }) {
+  const [reportType, setReportType] = useState("payroll");
+
+  const reports = {
+    payroll: { label: "Monthly Payroll Summary", headers: ["Employee", "Month", "Salary", "Deduction", "Total Paid", "Status"], rows: payrollRecords.map((r) => [r.employeeName, r.month, r.basicSalary || 0, r.deduction || 0, r.finalSalary || 0, r.status]) },
+    overtime: { label: "Overtime Summary", headers: ["Employee", "Month", "Hours", "Amount", "Status"], rows: overtimeRecords.map((r) => [r.employeeName, r.month, r.hours || 0, r.amount || 0, r.status]) },
+    allowance: { label: "Allowance Summary", headers: ["Employee", "Month", "Type", "Amount", "Status"], rows: allowances.map((r) => [r.employeeName, r.month, r.type, r.amount || 0, r.status]) },
+    deduction: { label: "Deduction Summary", headers: ["Employee", "Month", "Type", "Amount", "Status"], rows: deductions.map((r) => [r.employeeName, r.month, r.type, r.amount || 0, r.status]) },
+    bonus: { label: "Bonus Summary", headers: ["Employee", "Month", "Type", "Amount", "Status"], rows: payrollBonuses.map((r) => [r.employeeName, r.month, r.type, r.amount || 0, r.status]) },
+    loan: { label: "Loan & Advance Summary", headers: ["Employee", "Month", "Type", "Installments", "Amount", "Status"], rows: loans.map((r) => [r.employeeName, r.month, r.type, r.installments || "", r.amount || 0, r.status]) },
+    settlement: { label: "Final Settlement Summary", headers: ["Employee", "Last Working Date", "Net Payable", "Status"], rows: finalSettlements.map((r) => [r.employeeName, r.lastWorkingDate, r.netPayable || 0, r.status]) },
+  };
+  const active = reports[reportType];
+  const amountCol = active.headers.length - 2;
+  const total = active.rows.reduce((s, r) => s + (Number(r[amountCol]) || 0), 0);
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {Object.entries(reports).map(([key, r]) => (
+          <Btn key={key} small variant={reportType === key ? "navy" : "quiet"} onClick={() => setReportType(key)}>{r.label}</Btn>
+        ))}
+      </div>
+      <Panel
+        title={active.label}
+        right={<ExportBar title={active.label} headers={active.headers} rows={active.rows} filename={`payroll-report-${reportType}`} />}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {active.headers.map((h) => (
+              <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {active.rows.map((row, i) => (
+              <tr key={i} style={{ borderBottom: `1px solid ${T.line}` }}>
+                {row.map((cell, j) => (
+                  <td key={j} style={{ padding: "9px 6px", fontWeight: j === 0 ? 700 : 400 }}>
+                    {j === amountCol ? `৳ ${Number(cell || 0).toLocaleString()}` : (cell ?? "—")}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {active.rows.length === 0 && <tr><td colSpan={active.headers.length} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No data for this report yet.</td></tr>}
+          </tbody>
+          {active.rows.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: `2px solid ${T.ink}` }}>
+                <td colSpan={amountCol} style={{ padding: "10px 6px", fontWeight: 700 }}>Total</td>
+                <td style={{ padding: "10px 6px", fontWeight: 700, color: T.green }}>৳ {total.toLocaleString()}</td>
+                <td colSpan={active.headers.length - amountCol - 1} />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Payroll Settings                                                    */
+/* ------------------------------------------------------------------ */
+function PayrollSettings({ settings, setSettings }) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const upd = (k) => (v) => setForm({ ...form, [k]: v });
+  const save = () => setSettings(form);
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+
+  return (
+    <div style={{ padding: 24 }}>
+      <Panel
+        title="Payroll Settings"
+        right={<Btn variant="primary" small onClick={save} disabled={!dirty}><Check size={13} /> Save Changes</Btn>}
+        pad={0}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: T.canvas }}>
+              <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.3, color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>Title</th>
+              <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.3, color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <SettingRow title="Working Days per Month" note="Used as the default denominator when prorating pay by attendance.">
+              <TInput type="number" value={form.workingDaysPerMonth} onChange={(e) => upd("workingDaysPerMonth")(Number(e.target.value))} style={{ maxWidth: 140 }} />
+            </SettingRow>
+            <SettingRow title="Overtime Rate Multiplier" note="Multiplier applied to hourly rate when computing Overtime pay.">
+              <TInput type="number" step="0.1" value={form.otRateMultiplier} onChange={(e) => upd("otRateMultiplier")(Number(e.target.value))} style={{ maxWidth: 140 }} />
+            </SettingRow>
+            <SettingRow title="Standard Weekly Hours">
+              <TInput type="number" value={form.weeklyHours} onChange={(e) => upd("weeklyHours")(Number(e.target.value))} style={{ maxWidth: 140 }} />
+            </SettingRow>
+            <SettingRow title="Round Net Pay" note="Rounds computed net pay to the nearest Taka.">
+              <YesNoRow value={form.roundNetPay} onChange={upd("roundNetPay")} />
+            </SettingRow>
+            <SettingRow title="Auto Attendance Integration" note="Automatically pulls present/absent days into Monthly Payroll.">
+              <YesNoRow value={form.autoAttendanceIntegration} onChange={upd("autoAttendanceIntegration")} />
+            </SettingRow>
+            <SettingRow title="Bank Advice Note" note="Shown at the top of the Bank Advice sheet.">
+              <TInput value={form.bankAdviceNote} onChange={(e) => upd("bankAdviceNote")(e.target.value)} style={{ width: "100%" }} />
+            </SettingRow>
+            <SettingRow title="Payslip Footer Note" last>
+              <TInput value={form.payslipFooterNote} onChange={(e) => upd("payslipFooterNote")(e.target.value)} style={{ width: "100%" }} />
+            </SettingRow>
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Assets — Assets Category, Asset List, Logistic Support             */
+/* ------------------------------------------------------------------ */
+function AssetsCategory({ categories, setCategories }) {
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState(false);
+  const [name, setName] = useState("");
+
+  const openNew = () => { setForm("new"); setName(""); };
+  const openEdit = (c) => { setForm(c); setName(c.name); };
+  const closeForm = () => setForm(false);
+
+  const save = () => {
+    if (!name.trim()) return;
+    if (form === "new") {
+      setCategories([{ id: Date.now(), name: name.trim(), createdAt: nowStamp(), updatedAt: nowStamp() }, ...categories]);
+    } else {
+      setCategories(categories.map((c) => (c.id === form.id ? { ...c, name: name.trim(), updatedAt: nowStamp() } : c)));
+    }
+    setForm(false);
+  };
+  const remove = (id) => setCategories(categories.filter((c) => c.id !== id));
+  const filtered = categories.filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      {form && (
+        <Panel title={form === "new" ? "Add Assets Category" : "Edit Assets Category"} right={<Btn variant="quiet" small onClick={closeForm}><X size={14} /> Cancel</Btn>}>
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <Field label="Category Name" required><TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Furniture" /></Field>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <Btn variant="primary" onClick={save}><Plus size={14} /> Save</Btn>
+            </div>
+          </div>
+        </Panel>
+      )}
+      <Panel title="Assets Category" right={<Btn variant="primary" small onClick={openNew}><Plus size={14} /> Add Category</Btn>}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, gap: 10, flexWrap: "wrap" }}>
+          <ExportBar title="Assets Category" headers={["Id", "Name", "Created At", "Updated At"]} rows={filtered.map((c) => [c.id, c.name, c.createdAt, c.updatedAt])} filename="assets-category" />
+          <div style={{ position: "relative", width: 220 }}>
+            <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
+            <TInput placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+          </div>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Id", "Name", "Created At", "Updated At", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {filtered.map((c) => (
+              <tr key={c.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{c.id}</td>
+                <td style={{ padding: "10px 6px", fontWeight: 700 }}>{c.name}</td>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{c.createdAt}</td>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{c.updatedAt}</td>
+                <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => openEdit(c)} />
+                  <IconBtn icon={Trash2} tone={T.red} title="Delete" onClick={() => remove(c.id)} />
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && <tr><td colSpan={5} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No categories found.</td></tr>}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+const ASSET_STATUSES = ["In Use", "In Store", "Under Repair", "Damaged", "Returned"];
+
+function AssetList({ assets, setAssets, categories, employees, canEdit }) {
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState(false);
+  const [draft, setDraft] = useState({ name: "", category: categories[0]?.name || "", assignedTo: "", purchaseDate: "", value: "", status: "In Store" });
+
+  const openNew = () => { setForm("new"); setDraft({ name: "", category: categories[0]?.name || "", assignedTo: "", purchaseDate: "", value: "", status: "In Store" }); };
+  const openEdit = (a) => { setForm(a); setDraft(a); };
+  const closeForm = () => setForm(false);
+
+  const save = () => {
+    if (!draft.name.trim()) return;
+    if (form === "new") {
+      setAssets([{ ...draft, id: `AST-${Date.now().toString().slice(-6)}`, createdAt: nowStamp() }, ...assets]);
+    } else {
+      setAssets(assets.map((a) => (a.id === form.id ? { ...draft, id: form.id, createdAt: form.createdAt } : a)));
+    }
+    setForm(false);
+  };
+  const remove = (id) => setAssets(assets.filter((a) => a.id !== id));
+  const filtered = assets.filter((a) => !q || a.name.toLowerCase().includes(q.toLowerCase()) || a.id.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      {form && (
+        <Panel title={form === "new" ? "Add Asset" : "Edit Asset"} right={<Btn variant="quiet" small onClick={closeForm}><X size={14} /> Cancel</Btn>}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px 16px" }}>
+            <Field label="Asset Name" required><TInput value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Dell Laptop" /></Field>
+            <Field label="Category">
+              <TSelect value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+                {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                {categories.length === 0 && <option value="">Add a category first</option>}
+              </TSelect>
+            </Field>
+            <Field label="Assigned To">
+              <TSelect value={draft.assignedTo} onChange={(e) => setDraft({ ...draft, assignedTo: e.target.value })}>
+                <option value="">— Store / Unassigned —</option>
+                {employees.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+              </TSelect>
+            </Field>
+            <Field label="Purchase Date"><TInput type="date" value={draft.purchaseDate} onChange={(e) => setDraft({ ...draft, purchaseDate: e.target.value })} /></Field>
+            <Field label="Value (৳)"><TInput type="number" value={draft.value} onChange={(e) => setDraft({ ...draft, value: e.target.value })} /></Field>
+            <Field label="Status">
+              <TSelect value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                {ASSET_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </TSelect>
+            </Field>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+            <Btn variant="primary" onClick={save}><Plus size={14} /> Save</Btn>
+          </div>
+        </Panel>
+      )}
+      <Panel title={`Asset List — Total ${assets.length}`} right={canEdit && <Btn variant="primary" small onClick={openNew}><Plus size={14} /> Add Asset</Btn>}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, gap: 10, flexWrap: "wrap" }}>
+          <ExportBar
+            title="Asset List"
+            headers={["Asset ID", "Name", "Category", "Assigned To", "Purchase Date", "Value", "Status"]}
+            rows={filtered.map((a) => [a.id, a.name, a.category, a.assignedTo || "Store", a.purchaseDate, a.value || 0, a.status])}
+            filename="asset-list"
+          />
+          <div style={{ position: "relative", width: 220 }}>
+            <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
+            <TInput placeholder="Search by name or ID" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+          </div>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Asset ID", "Name", "Category", "Assigned To", "Purchase Date", "Value", "Status", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {filtered.map((a) => (
+              <tr key={a.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "10px 6px", color: T.inkSoft }}>{a.id}</td>
+                <td style={{ padding: "10px 6px", fontWeight: 700 }}>{a.name}</td>
+                <td style={{ padding: "10px 6px" }}>{a.category || "—"}</td>
+                <td style={{ padding: "10px 6px" }}>{a.assignedTo || "Store"}</td>
+                <td style={{ padding: "10px 6px" }}>{a.purchaseDate || "—"}</td>
+                <td style={{ padding: "10px 6px" }}>{a.value ? `৳ ${Number(a.value).toLocaleString()}` : "—"}</td>
+                <td style={{ padding: "10px 6px" }}><Badge tone={a.status === "In Use" ? "green" : a.status === "Damaged" ? "red" : "slate"}>{a.status}</Badge></td>
+                <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  {canEdit && <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => openEdit(a)} />}
+                  {canEdit && <IconBtn icon={Trash2} tone={T.red} title="Delete" onClick={() => remove(a.id)} />}
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && <tr><td colSpan={8} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No assets found.</td></tr>}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+const LOGISTIC_STATUSES = ["Pending", "Approved", "In Progress", "Completed", "Cancelled"];
+
+function LogisticSupport({ records, setRecords, employees, canEdit }) {
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState(false);
+  const [draft, setDraft] = useState({ requestedBy: "", supportType: "Vehicle", purpose: "", from: "", to: "", date: "", status: "Pending" });
+
+  const openNew = () => { setForm("new"); setDraft({ requestedBy: employees[0]?.name || "", supportType: "Vehicle", purpose: "", from: "", to: "", date: "", status: "Pending" }); };
+  const openEdit = (r) => { setForm(r); setDraft(r); };
+  const closeForm = () => setForm(false);
+
+  const save = () => {
+    if (!draft.purpose.trim()) return;
+    if (form === "new") {
+      setRecords([{ ...draft, id: Date.now(), createdAt: nowStamp() }, ...records]);
+    } else {
+      setRecords(records.map((r) => (r.id === form.id ? { ...draft, id: form.id, createdAt: form.createdAt } : r)));
+    }
+    setForm(false);
+  };
+  const remove = (id) => setRecords(records.filter((r) => r.id !== id));
+  const filtered = records.filter((r) => !q || r.purpose.toLowerCase().includes(q.toLowerCase()) || r.requestedBy?.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      {form && (
+        <Panel title={form === "new" ? "Add Logistic Support Request" : "Edit Logistic Support Request"} right={<Btn variant="quiet" small onClick={closeForm}><X size={14} /> Cancel</Btn>}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px 16px" }}>
+            <Field label="Requested By">
+              <TSelect value={draft.requestedBy} onChange={(e) => setDraft({ ...draft, requestedBy: e.target.value })}>
+                {employees.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+              </TSelect>
+            </Field>
+            <Field label="Support Type">
+              <TSelect value={draft.supportType} onChange={(e) => setDraft({ ...draft, supportType: e.target.value })}>
+                {["Vehicle", "Courier", "Transport", "Warehouse", "Other"].map((s) => <option key={s} value={s}>{s}</option>)}
+              </TSelect>
+            </Field>
+            <Field label="Date"><TInput type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></Field>
+            <Field label="From"><TInput value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} placeholder="e.g. Head Office" /></Field>
+            <Field label="To"><TInput value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="e.g. Gazipur Factory" /></Field>
+            <Field label="Status">
+              <TSelect value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                {LOGISTIC_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </TSelect>
+            </Field>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field label="Purpose" required><TInput value={draft.purpose} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} placeholder="e.g. Deliver raw materials to factory" /></Field>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+            <Btn variant="primary" onClick={save}><Plus size={14} /> Save</Btn>
+          </div>
+        </Panel>
+      )}
+      <Panel title={`Logistic Support — Total ${records.length}`} right={canEdit && <Btn variant="primary" small onClick={openNew}><Plus size={14} /> Add Request</Btn>}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, gap: 10, flexWrap: "wrap" }}>
+          <ExportBar
+            title="Logistic Support"
+            headers={["Requested By", "Support Type", "Purpose", "From", "To", "Date", "Status"]}
+            rows={filtered.map((r) => [r.requestedBy, r.supportType, r.purpose, r.from, r.to, r.date, r.status])}
+            filename="logistic-support"
+          />
+          <div style={{ position: "relative", width: 220 }}>
+            <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: T.inkSoft }} />
+            <TInput placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+          </div>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>
+            {["Requested By", "Support Type", "Purpose", "From", "To", "Date", "Status", ""].map((h) => <th key={h} style={{ padding: "9px 6px", fontSize: 11, textTransform: "uppercase", color: T.inkSoft, borderBottom: `2px solid ${T.line}` }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {filtered.map((r) => (
+              <tr key={r.id} style={{ borderBottom: `1px solid ${T.line}` }}>
+                <td style={{ padding: "10px 6px", fontWeight: 700 }}>{r.requestedBy || "—"}</td>
+                <td style={{ padding: "10px 6px" }}>{r.supportType}</td>
+                <td style={{ padding: "10px 6px" }}>{r.purpose}</td>
+                <td style={{ padding: "10px 6px" }}>{r.from || "—"}</td>
+                <td style={{ padding: "10px 6px" }}>{r.to || "—"}</td>
+                <td style={{ padding: "10px 6px" }}>{r.date || "—"}</td>
+                <td style={{ padding: "10px 6px" }}><Badge tone={r.status === "Completed" ? "green" : r.status === "Cancelled" ? "red" : r.status === "Pending" ? "orange" : "blue"}>{r.status}</Badge></td>
+                <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  {canEdit && <IconBtn icon={Pencil} tone={T.amberDeep} title="Edit" onClick={() => openEdit(r)} />}
+                  {canEdit && <IconBtn icon={Trash2} tone={T.red} title="Delete" onClick={() => remove(r.id)} />}
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && <tr><td colSpan={8} style={{ padding: 20, textAlign: "center", color: T.inkSoft }}>No logistic support requests found.</td></tr>}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
   );
 }
 
@@ -2414,10 +3353,26 @@ function NoDbBanner() {
 const TITLES = {
   dashboard: "Dashboard", employees: "Employee List", departments: "Department",
   holidays: "Holiday Calendar", shifts: "Shift Roster", bonus: "Bonus Type",
-  gazette: "Gazette Calculation", salary: "Salary", useraccess: "User Access",
+  gazette: "Gazette Calculation", useraccess: "User Access",
   group: "Group", probation: "Probation Period", globalsettings: "Global Setting",
+  assetcategory: "Assets Category", assetlist: "Asset List", logisticsupport: "Logistic Support",
+  salarystructure: "Salary Structure", salarysetup: "Employee Salary Setup",
+  attendanceintegration: "Attendance Integration", overtime: "Overtime",
+  allowance: "Allowance", deduction: "Deduction", payrollbonus: "Bonus",
+  loanadvance: "Loan & Advance", monthlypayroll: "Monthly Payroll", payslip: "Payslip",
+  bankadvice: "Bank Advice", finalsettlement: "Final Settlement",
+  payrollreports: "Payroll Reports", payrollsettings: "Payroll Settings",
 };
-const PERM_OF = { dashboard: "Dashboard", employees: "Employees", departments: "Departments", holidays: "Holidays", shifts: "Shifts", bonus: "Bonus", gazette: "Gazette", salary: "Salary", useraccess: "User Access", group: "Employee Group", probation: "Probation Period", globalsettings: "Global Setting" };
+const PERM_OF = {
+  dashboard: "Dashboard", employees: "Employees", departments: "Departments", holidays: "Holidays",
+  shifts: "Shifts", bonus: "Bonus", gazette: "Gazette", useraccess: "User Access",
+  group: "Employee Group", probation: "Probation Period", globalsettings: "Global Setting",
+  assetcategory: "Assets Category", assetlist: "Asset List", logisticsupport: "Logistic Support",
+  salarystructure: "Payroll", salarysetup: "Payroll", attendanceintegration: "Payroll",
+  overtime: "Payroll", allowance: "Payroll", deduction: "Payroll", payrollbonus: "Payroll",
+  loanadvance: "Payroll", monthlypayroll: "Payroll", payslip: "Payroll", bankadvice: "Payroll",
+  finalsettlement: "Payroll", payrollreports: "Payroll", payrollsettings: "Payroll",
+};
 
 export default function App() {
   const [booting, setBooting] = useState(true);
@@ -2437,10 +3392,22 @@ export default function App() {
   const [probationPeriods, setProbationPeriods] = useSynced(STORE_KEYS.probationPeriods, seedProbationPeriods, ready);
   const [globalSettings, setGlobalSettings] = useSynced(STORE_KEYS.globalSettings, defaultGlobalSettings, ready);
   const [payrollRecords, setPayrollRecords] = useSynced(STORE_KEYS.payrollRecords, [], ready);
+  const [assetCategories, setAssetCategories] = useSynced(STORE_KEYS.assetCategories, [], ready);
+  const [assets, setAssets] = useSynced(STORE_KEYS.assets, [], ready);
+  const [logisticSupport, setLogisticSupport] = useSynced(STORE_KEYS.logisticSupport, [], ready);
+  const [salaryStructures, setSalaryStructures] = useSynced(STORE_KEYS.salaryStructures, [], ready);
+  const [overtimeRecords, setOvertimeRecords] = useSynced(STORE_KEYS.overtimeRecords, [], ready);
+  const [allowances, setAllowances] = useSynced(STORE_KEYS.allowances, [], ready);
+  const [deductions, setDeductions] = useSynced(STORE_KEYS.deductions, [], ready);
+  const [payrollBonuses, setPayrollBonuses] = useSynced(STORE_KEYS.payrollBonuses, [], ready);
+  const [loans, setLoans] = useSynced(STORE_KEYS.loans, [], ready);
+  const [finalSettlements, setFinalSettlements] = useSynced(STORE_KEYS.finalSettlements, [], ready);
+  const [bankAccounts, setBankAccounts] = useSynced(STORE_KEYS.bankAccounts, {}, ready);
+  const [payrollSettings, setPayrollSettings] = useSynced(STORE_KEYS.payrollSettings, defaultPayrollSettings, ready);
 
   useEffect(() => {
     (async () => {
-      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb, gset, pay] = await Promise.all([
+      const [emp, dep, hol, shf, bon, gaz, usr, sal, grp, prb, gset, pay, acat, ast, logi, sstr, ot, alw, ded, pbon, lns, fset, bacc, pset] = await Promise.all([
         storageGet(STORE_KEYS.employees), storageGet(STORE_KEYS.departments),
         storageGet(STORE_KEYS.holidays), storageGet(STORE_KEYS.shifts),
         storageGet(STORE_KEYS.bonusTypes), storageGet(STORE_KEYS.gazettes),
@@ -2450,6 +3417,18 @@ export default function App() {
         storageGet(STORE_KEYS.probationPeriods),
         storageGet(STORE_KEYS.globalSettings),
         storageGet(STORE_KEYS.payrollRecords),
+        storageGet(STORE_KEYS.assetCategories),
+        storageGet(STORE_KEYS.assets),
+        storageGet(STORE_KEYS.logisticSupport),
+        storageGet(STORE_KEYS.salaryStructures),
+        storageGet(STORE_KEYS.overtimeRecords),
+        storageGet(STORE_KEYS.allowances),
+        storageGet(STORE_KEYS.deductions),
+        storageGet(STORE_KEYS.payrollBonuses),
+        storageGet(STORE_KEYS.loans),
+        storageGet(STORE_KEYS.finalSettlements),
+        storageGet(STORE_KEYS.bankAccounts),
+        storageGet(STORE_KEYS.payrollSettings),
       ]);
       const session = sessionGet();
       if (emp) setEmployees(emp);
@@ -2463,6 +3442,18 @@ export default function App() {
       if (prb) setProbationPeriods(prb);
       if (gset) setGlobalSettings({ ...defaultGlobalSettings, ...gset });
       if (pay) setPayrollRecords(pay);
+      if (acat) setAssetCategories(acat);
+      if (ast) setAssets(ast);
+      if (logi) setLogisticSupport(logi);
+      if (sstr) setSalaryStructures(sstr);
+      if (ot) setOvertimeRecords(ot);
+      if (alw) setAllowances(alw);
+      if (ded) setDeductions(ded);
+      if (pbon) setPayrollBonuses(pbon);
+      if (lns) setLoans(lns);
+      if (fset) setFinalSettlements(fset);
+      if (bacc) setBankAccounts(bacc);
+      if (pset) setPayrollSettings({ ...defaultPayrollSettings, ...pset });
       const finalUsers = usr || seedUsers;
       if (usr) setUsers(usr);
       if (session) {
@@ -2522,19 +3513,36 @@ export default function App() {
         {safeView === "gazette" && <GazetteCalc gazettes={gazettes} setGazettes={setGazettes} />}
         {safeView === "group" && <EmployeeGroups groups={employeeGroups} setGroups={setEmployeeGroups} />}
         {safeView === "probation" && <ProbationPeriod periods={probationPeriods} setPeriods={setProbationPeriods} />}
-        {safeView === "salary" && (
-          <Salary
-            employees={employees}
-            setEmployees={setEmployees}
-            gazettes={gazettes}
-            salarySheets={salarySheets}
-            setSalarySheets={setSalarySheets}
+        {safeView === "salarystructure" && <SalaryStructure structures={salaryStructures} setStructures={setSalaryStructures} canEdit={canEdit} />}
+        {safeView === "salarysetup" && <SalarySetup employees={employees} setEmployees={setEmployees} gazettes={gazettes} canEdit={canEdit} />}
+        {safeView === "attendanceintegration" && <AttendanceIntegration employees={employees} settings={payrollSettings} setSettings={setPayrollSettings} canEdit={canEdit} />}
+        {safeView === "overtime" && <Overtime employees={employees} records={overtimeRecords} setRecords={setOvertimeRecords} canEdit={canEdit} otRateMultiplier={payrollSettings.otRateMultiplier} />}
+        {safeView === "allowance" && <Allowance employees={employees} records={allowances} setRecords={setAllowances} canEdit={canEdit} />}
+        {safeView === "deduction" && <Deduction employees={employees} records={deductions} setRecords={setDeductions} canEdit={canEdit} />}
+        {safeView === "payrollbonus" && <PayrollBonus employees={employees} bonusTypes={bonusTypes} records={payrollBonuses} setRecords={setPayrollBonuses} canEdit={canEdit} />}
+        {safeView === "loanadvance" && <LoanAdvance employees={employees} records={loans} setRecords={setLoans} canEdit={canEdit} />}
+        {safeView === "monthlypayroll" && <SalarySheet employees={employees} gazettes={gazettes} salarySheets={salarySheets} setSalarySheets={setSalarySheets} canEdit={canEdit} />}
+        {safeView === "payslip" && (
+          <PayrollList employees={employees} gazettes={gazettes} records={payrollRecords} setRecords={setPayrollRecords} canEdit={canEdit} />
+        )}
+        {safeView === "bankadvice" && <BankAdvice employees={employees} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} payrollSettings={payrollSettings} />}
+        {safeView === "finalsettlement" && <FinalSettlement employees={employees} records={finalSettlements} setRecords={setFinalSettlements} canEdit={canEdit} />}
+        {safeView === "payrollreports" && (
+          <PayrollReports
             payrollRecords={payrollRecords}
-            setPayrollRecords={setPayrollRecords}
-            canEdit={canEdit}
+            overtimeRecords={overtimeRecords}
+            allowances={allowances}
+            deductions={deductions}
+            payrollBonuses={payrollBonuses}
+            loans={loans}
+            finalSettlements={finalSettlements}
           />
         )}
+        {safeView === "payrollsettings" && <PayrollSettings settings={payrollSettings} setSettings={setPayrollSettings} />}
         {safeView === "useraccess" && <UserAccess users={users} setUsers={setUsers} currentUser={authed} />}
+        {safeView === "assetcategory" && <AssetsCategory categories={assetCategories} setCategories={setAssetCategories} />}
+        {safeView === "assetlist" && <AssetList assets={assets} setAssets={setAssets} categories={assetCategories} employees={employees} canEdit={canEdit} />}
+        {safeView === "logisticsupport" && <LogisticSupport records={logisticSupport} setRecords={setLogisticSupport} employees={employees} canEdit={canEdit} />}
       </div>
     </div>
   );
