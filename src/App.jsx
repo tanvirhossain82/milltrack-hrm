@@ -11,6 +11,7 @@ import {
   Boxes, Tags, ClipboardList, Truck,
   Percent, FileClock, TimerReset, Gift, Receipt, HandCoins, Landmark, ClipboardCheck, FileBarChart2,
   TrendingUp, Rocket, History,
+  UserX, CalendarClock, Sun, CalendarOff,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import companyLogo from "./assets/company-logo.png";
@@ -168,6 +169,36 @@ const defaultPayrollSettings = {
   autoAttendanceIntegration: true,
   bankAdviceNote: "Please credit the salary of the below-mentioned employees to their respective bank accounts.",
   payslipFooterNote: "This is a computer generated payslip and does not require a signature.",
+  /* Attendance Import — sub-structure controlling how raw attendance      */
+  /* punches are turned into payroll-ready figures.                       */
+  attendanceImport: {
+    late: {
+      gracePeriodMinutes: 15,
+      deductionType: "Per Occurrence",       // None | Per Minute | Per Occurrence | Half Day After Limit
+      deductionRate: 100,
+      maxLateBeforeHalfDay: 3,
+    },
+    absent: {
+      deductionBasis: "Per Day Gross",       // Per Day Gross | Per Day Basic
+      autoMarkCutoffTime: "12:00",
+      consecutiveAbsentAsNoPayLeave: 3,
+    },
+    leave: {
+      paidLeaveTypes: ["Casual", "Sick", "Earned"],
+      unpaidDeductionBasis: "Per Day Gross", // Per Day Gross | Per Day Basic
+      autoDeductUnpaidLeave: true,
+    },
+    holiday: {
+      workOnHolidayMultiplier: 2,
+      autoCountAsPresent: true,
+      compensatoryOffEnabled: true,
+    },
+    weekend: {
+      weekendDays: ["Friday"],
+      workOnWeekendMultiplier: 1.5,
+      autoCountAsPresent: true,
+    },
+  },
 };
 
 const seedUsers = [
@@ -2602,10 +2633,48 @@ function SalaryStructure({ structures, setStructures, canEdit }) {
 /* ------------------------------------------------------------------ */
 /*  Attendance Integration — how attendance feeds into payroll         */
 /* ------------------------------------------------------------------ */
+const ATTENDANCE_IMPORT_TABS = [
+  { key: "late", label: "Late Calculation", icon: Clock },
+  { key: "absent", label: "Absent Calculation", icon: UserX },
+  { key: "leave", label: "Leave Adjustment", icon: CalendarClock },
+  { key: "holiday", label: "Holiday Adjustment", icon: Sun },
+  { key: "weekend", label: "Weekend Adjustment", icon: CalendarOff },
+];
+
+function ChipToggle({ options, value, onToggle }) {
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {options.map((o) => {
+        const active = value.includes(o);
+        return (
+          <button
+            key={o} type="button" onClick={() => onToggle(o)}
+            style={{
+              padding: "6px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: BODY_FONT,
+              border: `1px solid ${active ? T.amber : T.line}`, background: active ? "#FCF1DA" : T.canvas, color: active ? T.navy : T.inkSoft,
+            }}
+          >
+            {o}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function AttendanceIntegration({ employees, settings, setSettings, canEdit }) {
   const [form, setForm] = useState(settings);
   useEffect(() => setForm(settings), [settings]);
   const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+  const [importTab, setImportTab] = useState("late");
+
+  const ai = form.attendanceImport;
+  const updAI = (section, key) => (value) =>
+    setForm({ ...form, attendanceImport: { ...ai, [section]: { ...ai[section], [key]: value } } });
+  const toggleAIList = (section, key, value) => {
+    const list = ai[section][key];
+    updAI(section, key)(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  };
 
   const companyRows = COMPANIES.map((c) => {
     const list = employees.filter((e) => e.company === c.key);
@@ -2629,6 +2698,115 @@ function AttendanceIntegration({ employees, settings, setSettings, canEdit }) {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Auto-pull Attendance for Payroll</div>
         <YesNoRow value={form.autoAttendanceIntegration} onChange={(v) => setForm({ ...form, autoAttendanceIntegration: v })} />
       </Panel>
+
+      <Panel
+        title="Attendance Import"
+        right={canEdit && <Btn variant="primary" small onClick={() => setSettings(form)} disabled={!dirty}><Check size={13} /> Save</Btn>}
+      >
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 16, lineHeight: 1.6 }}>
+          Rules used while importing raw device punches — how lateness, absence, leave, holidays and weekends are each turned into payroll-ready figures.
+        </div>
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.line}`, marginBottom: 18, flexWrap: "wrap" }}>
+          {ATTENDANCE_IMPORT_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = importTab === t.key;
+            return (
+              <button
+                key={t.key} type="button" onClick={() => setImportTab(t.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 600,
+                  fontFamily: BODY_FONT, border: "none", borderBottom: active ? `2px solid ${T.amber}` : "2px solid transparent",
+                  background: "transparent", color: active ? T.ink : T.inkSoft, cursor: "pointer", marginBottom: -1,
+                }}
+              >
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {importTab === "late" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", maxWidth: 640 }}>
+            <Field label="Grace Period (minutes)">
+              <TInput type="number" value={ai.late.gracePeriodMinutes} onChange={(e) => updAI("late", "gracePeriodMinutes")(Number(e.target.value))} />
+            </Field>
+            <Field label="Deduction Type">
+              <TSelect value={ai.late.deductionType} onChange={(e) => updAI("late", "deductionType")(e.target.value)}>
+                {["None", "Per Minute", "Per Occurrence", "Half Day After Limit"].map((o) => <option key={o} value={o}>{o}</option>)}
+              </TSelect>
+            </Field>
+            <Field label={ai.late.deductionType === "Per Minute" ? "Deduction Rate (৳ / minute)" : "Deduction Rate (৳ / occurrence)"}>
+              <TInput type="number" value={ai.late.deductionRate} onChange={(e) => updAI("late", "deductionRate")(Number(e.target.value))} />
+            </Field>
+            <Field label="Mark Half-Day After (late count)">
+              <TInput type="number" value={ai.late.maxLateBeforeHalfDay} onChange={(e) => updAI("late", "maxLateBeforeHalfDay")(Number(e.target.value))} />
+            </Field>
+          </div>
+        )}
+
+        {importTab === "absent" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", maxWidth: 640 }}>
+            <Field label="Deduction Basis">
+              <TSelect value={ai.absent.deductionBasis} onChange={(e) => updAI("absent", "deductionBasis")(e.target.value)}>
+                {["Per Day Gross", "Per Day Basic"].map((o) => <option key={o} value={o}>{o}</option>)}
+              </TSelect>
+            </Field>
+            <Field label="Auto-mark Absent Cutoff Time">
+              <TInput type="time" value={ai.absent.autoMarkCutoffTime} onChange={(e) => updAI("absent", "autoMarkCutoffTime")(e.target.value)} />
+            </Field>
+            <Field label="Consecutive Absent Days → No-Pay Leave">
+              <TInput type="number" value={ai.absent.consecutiveAbsentAsNoPayLeave} onChange={(e) => updAI("absent", "consecutiveAbsentAsNoPayLeave")(Number(e.target.value))} />
+            </Field>
+          </div>
+        )}
+
+        {importTab === "leave" && (
+          <div style={{ maxWidth: 640 }}>
+            <Field label="Paid Leave Types">
+              <ChipToggle options={["Casual", "Sick", "Earned", "Maternity"]} value={ai.leave.paidLeaveTypes} onToggle={(v) => toggleAIList("leave", "paidLeaveTypes", v)} />
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+              <Field label="Unpaid Leave Deduction Basis">
+                <TSelect value={ai.leave.unpaidDeductionBasis} onChange={(e) => updAI("leave", "unpaidDeductionBasis")(e.target.value)}>
+                  {["Per Day Gross", "Per Day Basic"].map((o) => <option key={o} value={o}>{o}</option>)}
+                </TSelect>
+              </Field>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, margin: "10px 0 6px" }}>Auto-deduct Unpaid Leave</div>
+            <YesNoRow value={ai.leave.autoDeductUnpaidLeave} onChange={(v) => updAI("leave", "autoDeductUnpaidLeave")(v)} />
+          </div>
+        )}
+
+        {importTab === "holiday" && (
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+              <Field label="Work-on-Holiday Pay Multiplier">
+                <TInput type="number" step="0.1" value={ai.holiday.workOnHolidayMultiplier} onChange={(e) => updAI("holiday", "workOnHolidayMultiplier")(Number(e.target.value))} />
+              </Field>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, margin: "10px 0 6px" }}>Auto-count Holidays as Present</div>
+            <YesNoRow value={ai.holiday.autoCountAsPresent} onChange={(v) => updAI("holiday", "autoCountAsPresent")(v)} />
+            <div style={{ fontSize: 13, fontWeight: 600, margin: "14px 0 6px" }}>Enable Compensatory Off</div>
+            <YesNoRow value={ai.holiday.compensatoryOffEnabled} onChange={(v) => updAI("holiday", "compensatoryOffEnabled")(v)} />
+          </div>
+        )}
+
+        {importTab === "weekend" && (
+          <div style={{ maxWidth: 640 }}>
+            <Field label="Weekend Day(s)">
+              <ChipToggle options={WEEKDAYS} value={ai.weekend.weekendDays} onToggle={(v) => toggleAIList("weekend", "weekendDays", v)} />
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+              <Field label="Work-on-Weekend Pay Multiplier">
+                <TInput type="number" step="0.1" value={ai.weekend.workOnWeekendMultiplier} onChange={(e) => updAI("weekend", "workOnWeekendMultiplier")(Number(e.target.value))} />
+              </Field>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, margin: "10px 0 6px" }}>Auto-count Weekend as Present</div>
+            <YesNoRow value={ai.weekend.autoCountAsPresent} onChange={(v) => updAI("weekend", "autoCountAsPresent")(v)} />
+          </div>
+        )}
+      </Panel>
+
       <Panel title="Company-wise Attendance Summary — Current Cycle">
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr style={{ textAlign: "left" }}>
