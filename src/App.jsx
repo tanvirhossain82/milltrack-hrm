@@ -12,6 +12,7 @@ import {
   Percent, FileClock, TimerReset, Gift, Receipt, HandCoins, Landmark, ClipboardCheck, FileBarChart2,
   TrendingUp, Rocket, History,
   UserX, CalendarClock, Sun, CalendarOff,
+  Smartphone, Fuel, Moon, Utensils, Stamp,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import companyLogo from "./assets/company-logo.png";
@@ -198,6 +199,71 @@ const defaultPayrollSettings = {
       workOnWeekendMultiplier: 1.5,
       autoCountAsPresent: true,
     },
+  },
+  /* OT Setup — sub-structure controlling how overtime hours are        */
+  /* recognised, rated, approved and rolled into payroll.               */
+  otSetup: {
+    hours: {
+      minOTMinutes: 30,          // shorter stretches are not counted as OT
+      maxOTHoursPerDay: 4,
+      roundToNearestMinutes: 15,
+    },
+    rate: {
+      rateBasis: "Multiplier of Hourly Rate", // Fixed Rate per Hour | Multiplier of Hourly Rate
+      holidayMultiplier: 2.5,
+      weekendMultiplier: 2,
+    },
+    approval: {
+      approvalRequired: true,
+      approverRole: "Line Manager",  // Line Manager | HR Manager | Admin
+      autoApproveUnderHours: 1,
+    },
+    calculation: {
+      calculationMethod: "Daily",    // Daily | Monthly Aggregate
+      includeInGrossPayroll: true,
+      monthlyCapHours: 40,
+    },
+  },
+  /* Allowance Setup — per-type rules for the recurring allowances paid  */
+  /* alongside salary.                                                  */
+  allowanceSetup: {
+    travel: { enabled: true, calcBasis: "Fixed Monthly", amount: 1200 },
+    mobile: { enabled: true, calcBasis: "Fixed Monthly", amount: 500 },
+    fuel: { enabled: false, calcBasis: "Fixed Monthly", amount: 2000, eligibility: "Managerial Only" },
+    shift: { enabled: true, calcBasis: "Per Shift", amount: 100 },
+    night: { enabled: true, calcBasis: "Per Night", amount: 150, nightStart: "22:00", nightEnd: "06:00" },
+    festival: { enabled: true, calcBasis: "% of Basic", amount: 100, occurrencesPerYear: 2 },
+  },
+  /* Deduction Setup — per-type rules for every deduction line that can  */
+  /* be applied against an employee's salary.                           */
+  deductionSetup: {
+    incomeTax: { enabled: true, calcBasis: "Slab-based (NBR)", rateOrAmount: 0 },
+    pf: { enabled: true, calcBasis: "% of Basic", employeeContribution: 8, employerContribution: 8 },
+    loan: { enabled: true, installmentBasis: "Fixed Amount", maxInstallmentPercent: 30 },
+    advance: { enabled: true, maxAdvancePercent: 50, recoveryInstallments: 3 },
+    mobileBill: { enabled: false, calcBasis: "Fixed Monthly", amount: 500 },
+    canteenBill: { enabled: true, calcBasis: "Per Meal", amount: 40 },
+    absent: { enabled: true, deductionBasis: "Per Day Gross" },
+    late: { enabled: true, deductionBasis: "Fixed per Occurrence", rate: 100 },
+    stamp: { enabled: true, amount: 10, applicableWhen: "Cash Payment Only" },
+    other: { enabled: true, defaultAmount: 0, note: "" },
+  },
+  /* Bonus Setup — per-type rules for every recurring or occasional      */
+  /* bonus disbursed alongside payroll.                                  */
+  bonusSetup: {
+    eid: { enabled: true, calcBasis: "% of Basic", amount: 100, occurrencesPerYear: 2 },
+    festival: { enabled: true, calcBasis: "% of Basic", amount: 100, occurrencesPerYear: 2 },
+    performance: { enabled: true, calcBasis: "% of Gross", amount: 10, eligibility: "Rated Employees Only" },
+    yearly: { enabled: true, calcBasis: "% of Basic", amount: 100, payoutMonth: "December" },
+    attendance: { enabled: true, calcBasis: "Fixed Amount", amount: 500, minAttendancePercent: 95 },
+    baishaki: { enabled: true, calcBasis: "% of Basic", amount: 20, payoutMonth: "April" },
+  },
+  /* Payroll Processing — controls for locking, approving, and          */
+  /* reprocessing a generated monthly salary sheet.                     */
+  payrollProcessing: {
+    approvalRequired: true,
+    approverRole: "HR Manager",       // Line Manager | HR Manager | Admin
+    allowReprocessAfterApproval: false,
   },
 };
 
@@ -2146,13 +2212,26 @@ function PromotionSalaryUpdate({ employees, setEmployees, canEdit, addRevision }
   );
 }
 
-function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEdit }) {
+const PAYROLL_PROCESSING_TABS = [
+  { key: "monthly", label: "Monthly Payroll", icon: FileSpreadsheet },
+  { key: "lock", label: "Payroll Lock", icon: Lock },
+  { key: "approval", label: "Payroll Approval", icon: ClipboardCheck },
+  { key: "reprocess", label: "Reprocess Payroll", icon: RefreshCcw },
+];
+
+function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEdit, settings, setSettings, currentUser }) {
   const [company, setCompany] = useState(COMPANIES[0].key);
   const [month, setMonth] = useState(currentMonthStr());
   const [viewing, setViewing] = useState(null);
+  const [processTab, setProcessTab] = useState("monthly");
+  const [pForm, setPForm] = useState(settings.payrollProcessing);
+  useEffect(() => setPForm(settings.payrollProcessing), [settings.payrollProcessing]);
+  const pDirty = JSON.stringify(pForm) !== JSON.stringify(settings.payrollProcessing);
+
   const sheetKey = `${company}-${month}`;
   const gz = gazetteFor(month, gazettes);
   const sheet = salarySheets[sheetKey];
+  const status = sheet?.status || (sheet ? "Draft" : null);
 
   const workingDaysDefault = 26;
 
@@ -2164,11 +2243,27 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
         const presentDays = existing ? existing.presentDays : workingDaysDefault;
         return { id: e.id, name: e.name, designation: e.designation, gross: e.grossSalary || 0, presentDays, workingDays: workingDaysDefault };
       });
-    setSalarySheets({ ...salarySheets, [sheetKey]: { rows, generatedAt: new Date().toISOString() } });
+    setSalarySheets({ ...salarySheets, [sheetKey]: { rows, generatedAt: new Date().toISOString(), status: "Draft" } });
   };
 
-  const updatePresent = (id, val) => {
+  const reprocess = () => {
     if (!sheet) return;
+    const rows = employees
+      .filter((e) => e.company === company)
+      .map((e) => ({ id: e.id, name: e.name, designation: e.designation, gross: e.grossSalary || 0, presentDays: workingDaysDefault, workingDays: workingDaysDefault }));
+    setSalarySheets({ ...salarySheets, [sheetKey]: { rows, generatedAt: new Date().toISOString(), status: "Draft" } });
+  };
+
+  const lockSheet = () => setSalarySheets({ ...salarySheets, [sheetKey]: { ...sheet, status: "Locked", lockedAt: new Date().toISOString() } });
+  const unlockSheet = () => setSalarySheets({ ...salarySheets, [sheetKey]: { ...sheet, status: "Draft", lockedAt: null } });
+  const approveSheet = () => setSalarySheets({ ...salarySheets, [sheetKey]: { ...sheet, status: "Approved", approvedBy: currentUser?.name || "—", approvedAt: new Date().toISOString() } });
+  const revokeApproval = () => setSalarySheets({ ...salarySheets, [sheetKey]: { ...sheet, status: "Locked", approvedBy: null, approvedAt: null } });
+
+  const isLocked = status === "Locked" || status === "Approved";
+  const isApproved = status === "Approved";
+
+  const updatePresent = (id, val) => {
+    if (!sheet || isLocked) return;
     const rows = sheet.rows.map((r) => (r.id === id ? { ...r, presentDays: Math.max(0, Math.min(r.workingDays, Number(val) || 0)) } : r));
     setSalarySheets({ ...salarySheets, [sheetKey]: { ...sheet, rows } });
   };
@@ -2188,35 +2283,135 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
 
   const viewEmp = viewing ? rowsWithCalc.find((r) => r.id === viewing) : null;
 
+  const statusTone = status === "Approved" ? T.green : status === "Locked" ? T.orange : T.blue;
+
   return (
-    <div style={{ padding: 24 }}>
-    <Panel
-      title="Monthly Payroll — Salary Sheet"
-      right={
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <Panel title="Payroll Processing">
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.line}`, marginBottom: 18, flexWrap: "wrap" }}>
+          {PAYROLL_PROCESSING_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = processTab === t.key;
+            return (
+              <button
+                key={t.key} type="button" onClick={() => setProcessTab(t.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 600,
+                  fontFamily: BODY_FONT, border: "none", borderBottom: active ? `2px solid ${T.amber}` : "2px solid transparent",
+                  background: "transparent", color: active ? T.ink : T.inkSoft, cursor: "pointer", marginBottom: -1,
+                }}
+              >
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
           <TSelect value={company} onChange={(e) => setCompany(e.target.value)} style={{ width: 200 }}>
             {COMPANIES.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
           </TSelect>
           <TInput type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 150 }} />
-          {canEdit && <Btn small variant="primary" onClick={generate}><RefreshCcw size={13} /> {sheet ? "Regenerate" : "Generate"}</Btn>}
+          {status && (
+            <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20, color: "#fff", background: statusTone }}>
+              {status}
+            </span>
+          )}
         </div>
-      }
-    >
+
+        {processTab === "monthly" && (
+          <div>
+            <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 12, lineHeight: 1.6 }}>
+              Generate the salary sheet for the selected company and month. Regenerating keeps any present-day overrides already entered.
+            </div>
+            {canEdit && <Btn small variant="primary" onClick={generate} disabled={isLocked}><RefreshCcw size={13} /> {sheet ? "Regenerate" : "Generate"}</Btn>}
+            {isLocked && <div style={{ fontSize: 11.5, color: T.orange, marginTop: 8 }}>This sheet is {status.toLowerCase()} — unlock it under Payroll Lock to regenerate.</div>}
+          </div>
+        )}
+
+        {processTab === "lock" && (
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 14, lineHeight: 1.6 }}>
+              Locking a sheet freezes present-day edits so payroll can move to approval without further changes.
+            </div>
+            {!sheet && <div style={{ fontSize: 12.5, color: T.inkSoft }}>Generate a sheet first under Monthly Payroll.</div>}
+            {sheet && (
+              <div style={{ display: "flex", gap: 8 }}>
+                {!isLocked && canEdit && <Btn small variant="primary" onClick={lockSheet}><Lock size={13} /> Lock Sheet</Btn>}
+                {status === "Locked" && canEdit && <Btn small variant="quiet" onClick={unlockSheet}><KeyRound size={13} /> Unlock Sheet</Btn>}
+                {status === "Approved" && <div style={{ fontSize: 12, color: T.inkSoft, alignSelf: "center" }}>Approved sheets must be revoked from Payroll Approval before unlocking.</div>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {processTab === "approval" && (
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Approval Required Before Payment</div>
+            <YesNoRow value={pForm.approvalRequired} onChange={(v) => setPForm({ ...pForm, approvalRequired: v })} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", marginTop: 14 }}>
+              <Field label="Approver Role">
+                <TSelect value={pForm.approverRole} onChange={(e) => setPForm({ ...pForm, approverRole: e.target.value })}>
+                  {["Line Manager", "HR Manager", "Admin"].map((o) => <option key={o} value={o}>{o}</option>)}
+                </TSelect>
+              </Field>
+            </div>
+            {canEdit && <Btn small variant="primary" onClick={() => setSettings({ ...settings, payrollProcessing: pForm })} disabled={!pDirty} style={{ marginTop: 6 }}><Check size={13} /> Save</Btn>}
+
+            <div style={{ borderTop: `1px solid ${T.line}`, marginTop: 18, paddingTop: 16 }}>
+              {!sheet && <div style={{ fontSize: 12.5, color: T.inkSoft }}>Generate a sheet first under Monthly Payroll.</div>}
+              {sheet && status !== "Locked" && status !== "Approved" && <div style={{ fontSize: 12.5, color: T.inkSoft }}>Lock the sheet under Payroll Lock before it can be approved.</div>}
+              {sheet && status === "Locked" && canEdit && <Btn small variant="primary" onClick={approveSheet}><ClipboardCheck size={13} /> Approve Payroll</Btn>}
+              {sheet && status === "Approved" && (
+                <div style={{ fontSize: 12.5, color: T.inkSoft }}>
+                  Approved by <b style={{ color: T.ink }}>{sheet.approvedBy}</b> on {sheet.approvedAt ? new Date(sheet.approvedAt).toLocaleString() : "—"}.
+                  {canEdit && <div style={{ marginTop: 8 }}><Btn small variant="quiet" onClick={revokeApproval}><X size={13} /> Revoke Approval</Btn></div>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {processTab === "reprocess" && (
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Allow Reprocessing After Approval</div>
+            <YesNoRow value={pForm.allowReprocessAfterApproval} onChange={(v) => setPForm({ ...pForm, allowReprocessAfterApproval: v })} />
+            {canEdit && <Btn small variant="primary" onClick={() => setSettings({ ...settings, payrollProcessing: pForm })} disabled={!pDirty} style={{ marginTop: 12 }}><Check size={13} /> Save</Btn>}
+
+            <div style={{ borderTop: `1px solid ${T.line}`, marginTop: 18, paddingTop: 16 }}>
+              <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 10, lineHeight: 1.6 }}>
+                Reprocessing rebuilds this sheet from scratch — every employee's present days reset to the full working-day count.
+              </div>
+              {!sheet && <div style={{ fontSize: 12.5, color: T.inkSoft }}>Generate a sheet first under Monthly Payroll.</div>}
+              {sheet && canEdit && (isApproved ? settings.payrollProcessing.allowReprocessAfterApproval : true) && (
+                <Btn small variant="danger" onClick={reprocess}><RefreshCcw size={13} /> Reprocess Sheet</Btn>
+              )}
+              {sheet && isApproved && !settings.payrollProcessing.allowReprocessAfterApproval && (
+                <div style={{ fontSize: 11.5, color: T.orange }}>This sheet is approved — enable "Allow Reprocessing After Approval" above, or revoke approval first.</div>
+              )}
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title="Monthly Payroll — Salary Sheet"
+        right={
+          <ExportBar
+            title="Monthly Salary Sheet"
+            headers={["ID", "Name", "Basic", "House Rent", "Conveyance", "Medical", "Present", "Working", "Payable"]}
+            rows={rowsWithCalc.map((r) => [r.id, r.name, r.basic, r.houseRent, r.conveyance, r.medical, r.presentDays, r.workingDays, r.payable])}
+            filename={`salary-sheet-${company}-${month}`}
+          />
+        }
+      >
       {!gz && <div style={{ marginBottom: 12, fontSize: 12.5, color: T.orange }}>No Gazette formula found for this month — add one under HR Setup → Gazette Calculation first.</div>}
       {!sheet ? (
         <div style={{ padding: 30, textAlign: "center", color: T.inkSoft, fontSize: 13 }}>
-          No salary sheet generated yet for <b>{COMPANIES.find((c) => c.key === company)?.short}</b> — {month}. Click <b>Generate</b> above.
+          No salary sheet generated yet for <b>{COMPANIES.find((c) => c.key === company)?.short}</b> — {month}. Generate one under the <b>Monthly Payroll</b> tab above.
         </div>
       ) : (
         <>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <ExportBar
-              title="Monthly Salary Sheet"
-              headers={["ID", "Name", "Basic", "House Rent", "Conveyance", "Medical", "Present", "Working", "Payable"]}
-              rows={rowsWithCalc.map((r) => [r.id, r.name, r.basic, r.houseRent, r.conveyance, r.medical, r.presentDays, r.workingDays, r.payable])}
-              filename={`salary-sheet-${company}-${month}`}
-            />
-          </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: "left" }}>
@@ -2235,7 +2430,7 @@ function SalarySheet({ employees, gazettes, salarySheets, setSalarySheets, canEd
                   <td style={{ padding: "9px 6px" }}>{r.conveyance.toLocaleString()}</td>
                   <td style={{ padding: "9px 6px" }}>{r.medical.toLocaleString()}</td>
                   <td style={{ padding: "9px 6px" }}>
-                    {canEdit ? (
+                    {canEdit && !isLocked ? (
                       <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <TInput type="number" value={r.presentDays} onChange={(e) => updatePresent(r.id, e.target.value)} style={{ width: 58, padding: "4px 6px" }} />
                         <span style={{ color: T.inkSoft }}>/ {r.workingDays}</span>
@@ -2959,73 +3154,528 @@ function LedgerModule({
   );
 }
 
-function Overtime({ employees, records, setRecords, canEdit, otRateMultiplier }) {
+const OT_SETUP_TABS = [
+  { key: "hours", label: "OT Hours", icon: Clock },
+  { key: "rate", label: "OT Rate", icon: Percent },
+  { key: "approval", label: "OT Approval", icon: ClipboardCheck },
+  { key: "calculation", label: "OT Calculation", icon: Calculator },
+];
+
+function Overtime({ employees, records, setRecords, canEdit, settings, setSettings }) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+  const [otTab, setOtTab] = useState("hours");
+
+  const ot = form.otSetup;
+  const updOT = (section, key) => (value) =>
+    setForm({ ...form, otSetup: { ...ot, [section]: { ...ot[section], [key]: value } } });
+
   return (
-    <LedgerModule
-      title="Overtime"
-      employees={employees}
-      records={records}
-      setRecords={setRecords}
-      canEdit={canEdit}
-      exportName="overtime"
-      statusOptions={["Pending", "Approved", "Paid"]}
-      fields={[
-        { key: "hours", label: "OT Hours", type: "number", placeholder: "10" },
-        { key: "rate", label: "Rate / Hour (৳)", type: "number", placeholder: "50" },
-      ]}
-      computeAmount={(f) => (Number(f.hours) || 0) * (Number(f.rate) || 0) * (Number(otRateMultiplier) || 1)}
-    />
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <Panel
+        title="OT Setup"
+        right={canEdit && <Btn variant="primary" small onClick={() => setSettings(form)} disabled={!dirty}><Check size={13} /> Save</Btn>}
+      >
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 16, lineHeight: 1.6 }}>
+          Rules controlling how overtime hours are recognised, rated, approved, and rolled into payroll.
+        </div>
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.line}`, marginBottom: 18, flexWrap: "wrap" }}>
+          {OT_SETUP_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = otTab === t.key;
+            return (
+              <button
+                key={t.key} type="button" onClick={() => setOtTab(t.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 600,
+                  fontFamily: BODY_FONT, border: "none", borderBottom: active ? `2px solid ${T.amber}` : "2px solid transparent",
+                  background: "transparent", color: active ? T.ink : T.inkSoft, cursor: "pointer", marginBottom: -1,
+                }}
+              >
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {otTab === "hours" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", maxWidth: 640 }}>
+            <Field label="Minimum OT Duration (minutes)">
+              <TInput type="number" value={ot.hours.minOTMinutes} onChange={(e) => updOT("hours", "minOTMinutes")(Number(e.target.value))} />
+            </Field>
+            <Field label="Max OT Hours per Day">
+              <TInput type="number" value={ot.hours.maxOTHoursPerDay} onChange={(e) => updOT("hours", "maxOTHoursPerDay")(Number(e.target.value))} />
+            </Field>
+            <Field label="Round To Nearest (minutes)">
+              <TSelect value={ot.hours.roundToNearestMinutes} onChange={(e) => updOT("hours", "roundToNearestMinutes")(Number(e.target.value))}>
+                {[1, 5, 10, 15, 30, 60].map((o) => <option key={o} value={o}>{o}</option>)}
+              </TSelect>
+            </Field>
+          </div>
+        )}
+
+        {otTab === "rate" && (
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+              <Field label="Rate Basis">
+                <TSelect value={ot.rate.rateBasis} onChange={(e) => updOT("rate", "rateBasis")(e.target.value)}>
+                  {["Fixed Rate per Hour", "Multiplier of Hourly Rate"].map((o) => <option key={o} value={o}>{o}</option>)}
+                </TSelect>
+              </Field>
+              <Field label="Standard OT Rate Multiplier">
+                <TInput type="number" step="0.1" value={form.otRateMultiplier} onChange={(e) => setForm({ ...form, otRateMultiplier: Number(e.target.value) })} />
+              </Field>
+              <Field label="Holiday OT Multiplier">
+                <TInput type="number" step="0.1" value={ot.rate.holidayMultiplier} onChange={(e) => updOT("rate", "holidayMultiplier")(Number(e.target.value))} />
+              </Field>
+              <Field label="Weekend OT Multiplier">
+                <TInput type="number" step="0.1" value={ot.rate.weekendMultiplier} onChange={(e) => updOT("rate", "weekendMultiplier")(Number(e.target.value))} />
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {otTab === "approval" && (
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>OT Approval Required</div>
+            <YesNoRow value={ot.approval.approvalRequired} onChange={(v) => updOT("approval", "approvalRequired")(v)} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", marginTop: 14 }}>
+              <Field label="Approver Role">
+                <TSelect value={ot.approval.approverRole} onChange={(e) => updOT("approval", "approverRole")(e.target.value)}>
+                  {["Line Manager", "HR Manager", "Admin"].map((o) => <option key={o} value={o}>{o}</option>)}
+                </TSelect>
+              </Field>
+              <Field label="Auto-approve Under (hours)">
+                <TInput type="number" step="0.5" value={ot.approval.autoApproveUnderHours} onChange={(e) => updOT("approval", "autoApproveUnderHours")(Number(e.target.value))} />
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {otTab === "calculation" && (
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+              <Field label="Calculation Method">
+                <TSelect value={ot.calculation.calculationMethod} onChange={(e) => updOT("calculation", "calculationMethod")(e.target.value)}>
+                  {["Daily", "Monthly Aggregate"].map((o) => <option key={o} value={o}>{o}</option>)}
+                </TSelect>
+              </Field>
+              <Field label="Monthly OT Hours Cap">
+                <TInput type="number" value={ot.calculation.monthlyCapHours} onChange={(e) => updOT("calculation", "monthlyCapHours")(Number(e.target.value))} />
+              </Field>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, margin: "10px 0 6px" }}>Include OT in Gross Payroll</div>
+            <YesNoRow value={ot.calculation.includeInGrossPayroll} onChange={(v) => updOT("calculation", "includeInGrossPayroll")(v)} />
+          </div>
+        )}
+      </Panel>
+
+      <LedgerModule
+        title="Overtime"
+        employees={employees}
+        records={records}
+        setRecords={setRecords}
+        canEdit={canEdit}
+        exportName="overtime"
+        statusOptions={["Pending", "Approved", "Paid"]}
+        fields={[
+          { key: "hours", label: "OT Hours", type: "number", placeholder: "10" },
+          { key: "rate", label: "Rate / Hour (৳)", type: "number", placeholder: "50" },
+        ]}
+        computeAmount={(f) => (Number(f.hours) || 0) * (Number(f.rate) || 0) * (Number(settings.otRateMultiplier) || 1)}
+      />
+    </div>
   );
 }
 
-function Allowance({ employees, records, setRecords, canEdit }) {
+const ALLOWANCE_SETUP_TABS = [
+  { key: "travel", label: "Travel Allowance", icon: Truck, calcOptions: ["Fixed Monthly", "Per Day", "% of Basic"] },
+  { key: "mobile", label: "Mobile Allowance", icon: Smartphone, calcOptions: ["Fixed Monthly", "% of Basic"] },
+  { key: "fuel", label: "Fuel Allowance", icon: Fuel, calcOptions: ["Fixed Monthly", "Per Day"] },
+  { key: "shift", label: "Shift Allowance", icon: Clock, calcOptions: ["Per Shift"] },
+  { key: "night", label: "Night Allowance", icon: Moon, calcOptions: ["Per Night"] },
+  { key: "festival", label: "Festival Allowance", icon: Gift, calcOptions: ["Fixed Amount", "% of Basic"] },
+];
+
+function Allowance({ employees, records, setRecords, canEdit, settings, setSettings }) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+  const [allowTab, setAllowTab] = useState("travel");
+
+  const as_ = form.allowanceSetup;
+  const updAllow = (type, key) => (value) =>
+    setForm({ ...form, allowanceSetup: { ...as_, [type]: { ...as_[type], [key]: value } } });
+
+  const activeTab = ALLOWANCE_SETUP_TABS.find((t) => t.key === allowTab);
+  const cfg = as_[allowTab];
+  const amountLabel = cfg.calcBasis === "% of Basic" ? "Percentage (%)" : `Amount (৳${cfg.calcBasis === "Per Day" ? " / day" : cfg.calcBasis === "Per Shift" ? " / shift" : cfg.calcBasis === "Per Night" ? " / night" : " / month"})`;
+
   return (
-    <LedgerModule
-      title="Allowance"
-      employees={employees}
-      records={records}
-      setRecords={setRecords}
-      canEdit={canEdit}
-      exportName="allowances"
-      statusOptions={["Pending", "Approved", "Paid"]}
-      fields={[
-        { key: "type", label: "Allowance Type", type: "select", options: ["Transport", "Food", "Housing", "Mobile", "Special", "Others"] },
-      ]}
-    />
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <Panel
+        title="Allowance Setup"
+        right={canEdit && <Btn variant="primary" small onClick={() => setSettings(form)} disabled={!dirty}><Check size={13} /> Save</Btn>}
+      >
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 16, lineHeight: 1.6 }}>
+          Rules for each recurring allowance type paid alongside salary.
+        </div>
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.line}`, marginBottom: 18, flexWrap: "wrap" }}>
+          {ALLOWANCE_SETUP_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = allowTab === t.key;
+            return (
+              <button
+                key={t.key} type="button" onClick={() => setAllowTab(t.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 600,
+                  fontFamily: BODY_FONT, border: "none", borderBottom: active ? `2px solid ${T.amber}` : "2px solid transparent",
+                  background: "transparent", color: active ? T.ink : T.inkSoft, cursor: "pointer", marginBottom: -1,
+                }}
+              >
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Enable {activeTab.label}</div>
+        <YesNoRow value={cfg.enabled} onChange={(v) => updAllow(allowTab, "enabled")(v)} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", maxWidth: 640, marginTop: 14 }}>
+          <Field label="Calculation Basis">
+            <TSelect value={cfg.calcBasis} onChange={(e) => updAllow(allowTab, "calcBasis")(e.target.value)}>
+              {activeTab.calcOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+            </TSelect>
+          </Field>
+          <Field label={amountLabel}>
+            <TInput type="number" value={cfg.amount} onChange={(e) => updAllow(allowTab, "amount")(Number(e.target.value))} />
+          </Field>
+
+          {allowTab === "fuel" && (
+            <Field label="Eligibility">
+              <TSelect value={cfg.eligibility} onChange={(e) => updAllow("fuel", "eligibility")(e.target.value)}>
+                {["All Employees", "Managerial Only"].map((o) => <option key={o} value={o}>{o}</option>)}
+              </TSelect>
+            </Field>
+          )}
+
+          {allowTab === "night" && (
+            <>
+              <Field label="Night Window — Start"><TInput type="time" value={cfg.nightStart} onChange={(e) => updAllow("night", "nightStart")(e.target.value)} /></Field>
+              <Field label="Night Window — End"><TInput type="time" value={cfg.nightEnd} onChange={(e) => updAllow("night", "nightEnd")(e.target.value)} /></Field>
+            </>
+          )}
+
+          {allowTab === "festival" && (
+            <Field label="Occurrences per Year">
+              <TInput type="number" value={cfg.occurrencesPerYear} onChange={(e) => updAllow("festival", "occurrencesPerYear")(Number(e.target.value))} />
+            </Field>
+          )}
+        </div>
+      </Panel>
+
+      <LedgerModule
+        title="Allowance"
+        employees={employees}
+        records={records}
+        setRecords={setRecords}
+        canEdit={canEdit}
+        exportName="allowances"
+        statusOptions={["Pending", "Approved", "Paid"]}
+        fields={[
+          { key: "type", label: "Allowance Type", type: "select", options: ["Travel", "Mobile", "Fuel", "Shift", "Night", "Festival", "Transport", "Food", "Housing", "Special", "Others"] },
+        ]}
+      />
+    </div>
   );
 }
 
-function Deduction({ employees, records, setRecords, canEdit }) {
+const DEDUCTION_SETUP_TABS = [
+  {
+    key: "incomeTax", label: "Income Tax", icon: Landmark,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["Slab-based (NBR)", "Fixed % of Gross", "Fixed Amount"] },
+      { key: "rateOrAmount", label: "Rate (%) / Amount (৳)", type: "number" },
+    ],
+  },
+  {
+    key: "pf", label: "Provident Fund (PF)", icon: HandCoins,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["% of Basic", "% of Gross"] },
+      { key: "employeeContribution", label: "Employee Contribution (%)", type: "number" },
+      { key: "employerContribution", label: "Employer Contribution (%)", type: "number" },
+    ],
+  },
+  {
+    key: "loan", label: "Loan Deduction", icon: Wallet,
+    fields: [
+      { key: "installmentBasis", label: "Installment Basis", type: "select", options: ["Fixed Amount", "% of Gross"] },
+      { key: "maxInstallmentPercent", label: "Max Installment (% of Gross)", type: "number" },
+    ],
+  },
+  {
+    key: "advance", label: "Advance Salary", icon: Receipt,
+    fields: [
+      { key: "maxAdvancePercent", label: "Max Advance Limit (% of Gross)", type: "number" },
+      { key: "recoveryInstallments", label: "Recovery Installments (months)", type: "number" },
+    ],
+  },
+  {
+    key: "mobileBill", label: "Mobile Bill", icon: Smartphone,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["Fixed Monthly", "Actual Bill (Capped)"] },
+      { key: "amount", label: "Amount / Cap (৳)", type: "number" },
+    ],
+  },
+  {
+    key: "canteenBill", label: "Canteen Bill", icon: Utensils,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["Fixed Monthly", "Per Meal"] },
+      { key: "amount", label: "Amount (৳)", type: "number" },
+    ],
+  },
+  {
+    key: "absent", label: "Absent Deduction", icon: UserX,
+    fields: [
+      { key: "deductionBasis", label: "Deduction Basis", type: "select", options: ["Per Day Gross", "Per Day Basic"] },
+    ],
+  },
+  {
+    key: "late", label: "Late Deduction", icon: Clock,
+    fields: [
+      { key: "deductionBasis", label: "Deduction Basis", type: "select", options: ["Fixed per Occurrence", "Per Minute"] },
+      { key: "rate", label: "Rate (৳)", type: "number" },
+    ],
+  },
+  {
+    key: "stamp", label: "Stamp Deduction", icon: Stamp,
+    fields: [
+      { key: "amount", label: "Amount (৳)", type: "number" },
+      { key: "applicableWhen", label: "Applicable When", type: "select", options: ["Cash Payment Only", "All Payments"] },
+    ],
+  },
+  {
+    key: "other", label: "Other Deduction", icon: Tags,
+    fields: [
+      { key: "defaultAmount", label: "Default Amount (৳)", type: "number" },
+      { key: "note", label: "Note", type: "text" },
+    ],
+  },
+];
+
+function Deduction({ employees, records, setRecords, canEdit, settings, setSettings }) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+  const [dedTab, setDedTab] = useState("incomeTax");
+
+  const ds = form.deductionSetup;
+  const updDed = (type, key) => (value) =>
+    setForm({ ...form, deductionSetup: { ...ds, [type]: { ...ds[type], [key]: value } } });
+
+  const activeTab = DEDUCTION_SETUP_TABS.find((t) => t.key === dedTab);
+  const cfg = ds[dedTab];
+
   return (
-    <LedgerModule
-      title="Deduction"
-      employees={employees}
-      records={records}
-      setRecords={setRecords}
-      canEdit={canEdit}
-      exportName="deductions"
-      statusOptions={["Pending", "Applied"]}
-      fields={[
-        { key: "type", label: "Deduction Type", type: "select", options: ["Absence", "Late Fine", "Provident Fund", "Tax", "Damage/Loss", "Others"] },
-      ]}
-    />
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <Panel
+        title="Deduction Setup"
+        right={canEdit && <Btn variant="primary" small onClick={() => setSettings(form)} disabled={!dirty}><Check size={13} /> Save</Btn>}
+      >
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 16, lineHeight: 1.6 }}>
+          Rules for each deduction type that can be applied against an employee's salary.
+        </div>
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.line}`, marginBottom: 18, flexWrap: "wrap" }}>
+          {DEDUCTION_SETUP_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = dedTab === t.key;
+            return (
+              <button
+                key={t.key} type="button" onClick={() => setDedTab(t.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", fontSize: 12, fontWeight: 600,
+                  fontFamily: BODY_FONT, border: "none", borderBottom: active ? `2px solid ${T.amber}` : "2px solid transparent",
+                  background: "transparent", color: active ? T.ink : T.inkSoft, cursor: "pointer", marginBottom: -1, whiteSpace: "nowrap",
+                }}
+              >
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Enable {activeTab.label}</div>
+        <YesNoRow value={cfg.enabled} onChange={(v) => updDed(dedTab, "enabled")(v)} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", maxWidth: 640, marginTop: 14 }}>
+          {activeTab.fields.map((fl) => (
+            <Field key={fl.key} label={fl.label}>
+              {fl.type === "select" ? (
+                <TSelect value={cfg[fl.key]} onChange={(e) => updDed(dedTab, fl.key)(e.target.value)}>
+                  {fl.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                </TSelect>
+              ) : (
+                <TInput
+                  type={fl.type}
+                  value={cfg[fl.key]}
+                  onChange={(e) => updDed(dedTab, fl.key)(fl.type === "number" ? Number(e.target.value) : e.target.value)}
+                />
+              )}
+            </Field>
+          ))}
+        </div>
+      </Panel>
+
+      <LedgerModule
+        title="Deduction"
+        employees={employees}
+        records={records}
+        setRecords={setRecords}
+        canEdit={canEdit}
+        exportName="deductions"
+        statusOptions={["Pending", "Applied"]}
+        fields={[
+          { key: "type", label: "Deduction Type", type: "select", options: ["Income Tax", "Provident Fund", "Loan", "Advance Salary", "Mobile Bill", "Canteen Bill", "Absence", "Late Fine", "Stamp", "Damage/Loss", "Others"] },
+        ]}
+      />
+    </div>
   );
 }
 
-function PayrollBonus({ employees, bonusTypes, records, setRecords, canEdit }) {
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+const BONUS_SETUP_TABS = [
+  {
+    key: "eid", label: "Eid Bonus", icon: Moon,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["% of Basic", "Fixed Amount"] },
+      { key: "amount", label: "Amount / Percentage", type: "number" },
+      { key: "occurrencesPerYear", label: "Occurrences per Year", type: "number" },
+    ],
+  },
+  {
+    key: "festival", label: "Festival Bonus", icon: Gift,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["% of Basic", "Fixed Amount"] },
+      { key: "amount", label: "Amount / Percentage", type: "number" },
+      { key: "occurrencesPerYear", label: "Occurrences per Year", type: "number" },
+    ],
+  },
+  {
+    key: "performance", label: "Performance Bonus", icon: TrendingUp,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["% of Gross", "Fixed Amount"] },
+      { key: "amount", label: "Amount / Percentage", type: "number" },
+      { key: "eligibility", label: "Eligibility", type: "select", options: ["All Employees", "Rated Employees Only"] },
+    ],
+  },
+  {
+    key: "yearly", label: "Yearly Bonus", icon: CalendarDays,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["% of Basic", "Fixed Amount"] },
+      { key: "amount", label: "Amount / Percentage", type: "number" },
+      { key: "payoutMonth", label: "Payout Month", type: "select", options: MONTHS },
+    ],
+  },
+  {
+    key: "attendance", label: "Attendance Bonus", icon: ClipboardCheck,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["Fixed Amount", "% of Basic"] },
+      { key: "amount", label: "Amount / Percentage", type: "number" },
+      { key: "minAttendancePercent", label: "Minimum Attendance Required (%)", type: "number" },
+    ],
+  },
+  {
+    key: "baishaki", label: "Baishaki Bonus", icon: Sun,
+    fields: [
+      { key: "calcBasis", label: "Calculation Basis", type: "select", options: ["% of Basic", "Fixed Amount"] },
+      { key: "amount", label: "Amount / Percentage", type: "number" },
+      { key: "payoutMonth", label: "Payout Month", type: "select", options: MONTHS },
+    ],
+  },
+];
+
+function PayrollBonus({ employees, bonusTypes, records, setRecords, canEdit, settings, setSettings }) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+  const [bonusTab, setBonusTab] = useState("eid");
+
+  const bs = form.bonusSetup;
+  const updBonus = (type, key) => (value) =>
+    setForm({ ...form, bonusSetup: { ...bs, [type]: { ...bs[type], [key]: value } } });
+
+  const activeTab = BONUS_SETUP_TABS.find((t) => t.key === bonusTab);
+  const cfg = bs[bonusTab];
+
   return (
-    <LedgerModule
-      title="Bonus"
-      employees={employees}
-      records={records}
-      setRecords={setRecords}
-      canEdit={canEdit}
-      exportName="payroll-bonus"
-      statusOptions={["Pending", "Approved", "Paid"]}
-      fields={[
-        { key: "type", label: "Bonus Type", type: "select", options: bonusTypes.length ? bonusTypes.map((b) => b.type) : ["Festival Bonus", "Attendance Bonus"] },
-      ]}
-    />
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <Panel
+        title="Bonus Setup"
+        right={canEdit && <Btn variant="primary" small onClick={() => setSettings(form)} disabled={!dirty}><Check size={13} /> Save</Btn>}
+      >
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 16, lineHeight: 1.6 }}>
+          Rules for each bonus type disbursed alongside payroll.
+        </div>
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.line}`, marginBottom: 18, flexWrap: "wrap" }}>
+          {BONUS_SETUP_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = bonusTab === t.key;
+            return (
+              <button
+                key={t.key} type="button" onClick={() => setBonusTab(t.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 600,
+                  fontFamily: BODY_FONT, border: "none", borderBottom: active ? `2px solid ${T.amber}` : "2px solid transparent",
+                  background: "transparent", color: active ? T.ink : T.inkSoft, cursor: "pointer", marginBottom: -1, whiteSpace: "nowrap",
+                }}
+              >
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Enable {activeTab.label}</div>
+        <YesNoRow value={cfg.enabled} onChange={(v) => updBonus(bonusTab, "enabled")(v)} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px", maxWidth: 640, marginTop: 14 }}>
+          {activeTab.fields.map((fl) => (
+            <Field key={fl.key} label={fl.label}>
+              {fl.type === "select" ? (
+                <TSelect value={cfg[fl.key]} onChange={(e) => updBonus(bonusTab, fl.key)(e.target.value)}>
+                  {fl.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                </TSelect>
+              ) : (
+                <TInput
+                  type={fl.type}
+                  value={cfg[fl.key]}
+                  onChange={(e) => updBonus(bonusTab, fl.key)(fl.type === "number" ? Number(e.target.value) : e.target.value)}
+                />
+              )}
+            </Field>
+          ))}
+        </div>
+      </Panel>
+
+      <LedgerModule
+        title="Bonus"
+        employees={employees}
+        records={records}
+        setRecords={setRecords}
+        canEdit={canEdit}
+        exportName="payroll-bonus"
+        statusOptions={["Pending", "Approved", "Paid"]}
+        fields={[
+          {
+            key: "type", label: "Bonus Type", type: "select",
+            options: [...new Set([...BONUS_SETUP_TABS.map((t) => t.label), ...(bonusTypes.length ? bonusTypes.map((b) => b.type) : ["Attendance Bonus"])])],
+          },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -3872,12 +4522,12 @@ export default function App() {
         {safeView === "salarystructure" && <SalaryStructure structures={salaryStructures} setStructures={setSalaryStructures} canEdit={canEdit} />}
         {safeView === "salarysetup" && <EmployeeSalarySetup employees={employees} setEmployees={setEmployees} gazettes={gazettes} revisions={salaryRevisions} setRevisions={setSalaryRevisions} canEdit={canEdit} />}
         {safeView === "attendanceintegration" && <AttendanceIntegration employees={employees} settings={payrollSettings} setSettings={setPayrollSettings} canEdit={canEdit} />}
-        {safeView === "overtime" && <Overtime employees={employees} records={overtimeRecords} setRecords={setOvertimeRecords} canEdit={canEdit} otRateMultiplier={payrollSettings.otRateMultiplier} />}
-        {safeView === "allowance" && <Allowance employees={employees} records={allowances} setRecords={setAllowances} canEdit={canEdit} />}
-        {safeView === "deduction" && <Deduction employees={employees} records={deductions} setRecords={setDeductions} canEdit={canEdit} />}
-        {safeView === "payrollbonus" && <PayrollBonus employees={employees} bonusTypes={bonusTypes} records={payrollBonuses} setRecords={setPayrollBonuses} canEdit={canEdit} />}
+        {safeView === "overtime" && <Overtime employees={employees} records={overtimeRecords} setRecords={setOvertimeRecords} canEdit={canEdit} settings={payrollSettings} setSettings={setPayrollSettings} />}
+        {safeView === "allowance" && <Allowance employees={employees} records={allowances} setRecords={setAllowances} canEdit={canEdit} settings={payrollSettings} setSettings={setPayrollSettings} />}
+        {safeView === "deduction" && <Deduction employees={employees} records={deductions} setRecords={setDeductions} canEdit={canEdit} settings={payrollSettings} setSettings={setPayrollSettings} />}
+        {safeView === "payrollbonus" && <PayrollBonus employees={employees} bonusTypes={bonusTypes} records={payrollBonuses} setRecords={setPayrollBonuses} canEdit={canEdit} settings={payrollSettings} setSettings={setPayrollSettings} />}
         {safeView === "loanadvance" && <LoanAdvance employees={employees} records={loans} setRecords={setLoans} canEdit={canEdit} />}
-        {safeView === "monthlypayroll" && <SalarySheet employees={employees} gazettes={gazettes} salarySheets={salarySheets} setSalarySheets={setSalarySheets} canEdit={canEdit} />}
+        {safeView === "monthlypayroll" && <SalarySheet employees={employees} gazettes={gazettes} salarySheets={salarySheets} setSalarySheets={setSalarySheets} canEdit={canEdit} settings={payrollSettings} setSettings={setPayrollSettings} currentUser={authed} />}
         {safeView === "payslip" && (
           <PayrollList employees={employees} gazettes={gazettes} records={payrollRecords} setRecords={setPayrollRecords} canEdit={canEdit} />
         )}
